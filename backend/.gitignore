@@ -1,0 +1,59 @@
+# --- SEGURANÇA (O MAIS IMPORTANTE) ---
+# Nunca suba seus tokens da Meta ou senhas de banco de dados
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- BACKEND (Python / FastAPI) ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+
+# --- FRONTEND (React / Vite / Node) ---
+node_modules/
+/dist
+/build
+.rush/
+.eslintcache
+.stylelintcache
+.prettiercache
+.parcel-cache
+.next
+.nuxt
+.vuepress/dist
+.temp
+.cache/
+.parcel-cache
+
+# --- SISTEMA E IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.bak
+*.tmp
+*.log
+
+# --- BANCO DE DADOS (Se estiver usando SQLite local) ---
+*.sqlite3
+*.db
