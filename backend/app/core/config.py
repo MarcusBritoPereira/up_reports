@@ -11,6 +11,7 @@ class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
     app_debug: bool = os.getenv("APP_DEBUG", "false").lower() == "true"
     app_cors_origins: str = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173")
+    app_secret: str = os.getenv("APP_SECRET", "change-me-in-production")
 
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
 

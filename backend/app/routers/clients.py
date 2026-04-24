@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
 from app.database import get_db
-from app.models import Client
+from app.dependencies import get_current_user, require_roles
+from app.models import Client, User, UserClientAccess
 
 router = APIRouter()
+
 
 class ClientCreate(BaseModel):
     name: str
@@ -12,20 +15,64 @@ class ClientCreate(BaseModel):
     ig_id: str
     access_token: str
 
+
+class ClientAccessCreate(BaseModel):
+    user_id: int
+
+
 @router.get("/")
-def list_clients(db: Session = Depends(get_db)):
-    return db.query(Client).all()
+def list_clients(current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current.role == "admin":
+        return db.query(Client).all()
+
+    return (
+        db.query(Client)
+        .join(UserClientAccess, UserClientAccess.client_id == Client.id)
+        .filter(UserClientAccess.user_id == current.id)
+        .all()
+    )
+
 
 @router.post("/")
-def create_client(data: ClientCreate, db: Session = Depends(get_db)):
+def create_client(data: ClientCreate, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     client = Client(**data.model_dump())
     db.add(client)
     db.commit()
     db.refresh(client)
     return client
 
+
+@router.post("/{client_id}/access")
+def grant_access(
+    client_id: int,
+    data: ClientAccessCreate,
+    _: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    exists = (
+        db.query(UserClientAccess)
+        .filter(UserClientAccess.user_id == data.user_id, UserClientAccess.client_id == client_id)
+        .first()
+    )
+    if exists:
+        return {"ok": True, "message": "Acesso já existia"}
+
+    access = UserClientAccess(user_id=data.user_id, client_id=client_id)
+    db.add(access)
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/{client_id}")
-def delete_client(client_id: int, db: Session = Depends(get_db)):
+def delete_client(client_id: int, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")

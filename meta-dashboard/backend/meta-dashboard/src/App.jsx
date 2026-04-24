@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check } from "lucide-react"
+import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 
 const API = "http://localhost:8000"
@@ -20,6 +20,50 @@ function StatCard({ icon: Icon, label, value, iconBg, iconColor }) {
       <div>
         <p style={{color:"#64748b",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em"}}>{label}</p>
         <p style={{color:"#f1f5f9",fontSize:"24px",fontWeight:"700",marginTop:"2px"}}>{value ?? "—"}</p>
+      </div>
+    </div>
+  )
+}
+
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  const submit = async () => {
+    setError("")
+    setLoading(true)
+    try {
+      const r = await fetch(`${API}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha no login")
+      onLogin(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{minHeight:"100vh",background:"#08080f",display:"grid",placeItems:"center",padding:"20px"}}>
+      <div style={{width:"100%",maxWidth:"420px",background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px",padding:"28px"}}>
+        <h1 style={{color:"#f8fafc",marginBottom:"8px"}}>Meta Dash Login</h1>
+        <p style={{color:"#64748b",marginBottom:"22px",fontSize:"14px"}}>Entre para acessar os clientes e relatórios.</p>
+        <input value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="Email"
+          style={{width:"100%",marginBottom:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"12px",color:"#e2e8f0"}}/>
+        <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Senha"
+          style={{width:"100%",marginBottom:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"12px",color:"#e2e8f0"}}/>
+        {error && <p style={{color:"#ef4444",fontSize:"13px",marginBottom:"12px"}}>{error}</p>}
+        <button onClick={submit} disabled={loading}
+          style={{width:"100%",padding:"12px",background:"#7c3aed",border:"none",borderRadius:"10px",color:"white",cursor:"pointer",fontWeight:"600"}}>
+          {loading ? "Entrando..." : "Entrar"}
+        </button>
       </div>
     </div>
   )
@@ -62,14 +106,14 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
   )
 }
 
-function AddClientModal({ onClose, onSave }) {
+function AddClientModal({ onClose, onSave, authFetch }) {
   const [form, setForm] = useState({ name:"", page_id:"", ig_id:"", access_token:"" })
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
     if (!form.name || !form.ig_id || !form.access_token) return
     setSaving(true)
-    await fetch(`${API}/api/v1/clients/`, {
+    await authFetch(`${API}/api/v1/clients/`, {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(form)
     })
@@ -108,6 +152,11 @@ function AddClientModal({ onClose, onSave }) {
 }
 
 export default function App() {
+  const [auth, setAuth] = useState(() => {
+    const raw = localStorage.getItem("meta_dash_auth")
+    return raw ? JSON.parse(raw) : null
+  })
+
   const [clients, setClients] = useState([])
   const [selectedClient, setSelectedClient] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -116,8 +165,33 @@ export default function App() {
   const [tab, setTab] = useState("dashboard")
   const [showAddModal, setShowAddModal] = useState(false)
 
+  const authFetch = (url, options = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${auth?.access_token}`,
+      },
+    })
+  }
+
+  const handleLogin = (payload) => {
+    setAuth(payload)
+    localStorage.setItem("meta_dash_auth", JSON.stringify(payload))
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("meta_dash_auth")
+    setAuth(null)
+    setClients([])
+    setSelectedClient(null)
+    setProfile(null)
+    setMedia([])
+  }
+
   const loadClients = async () => {
-    const r = await fetch(`${API}/api/v1/clients/`)
+    const r = await authFetch(`${API}/api/v1/clients/`)
+    if (r.status === 401) return handleLogout()
     const data = await r.json()
     setClients(data)
     if (data.length > 0 && !selectedClient) setSelectedClient(data[0].id)
@@ -130,9 +204,10 @@ export default function App() {
     setMedia([])
     try {
       const [profRes, mediaRes] = await Promise.all([
-        fetch(`${API}/api/v1/instagram/profile?client_id=${selectedClient}`),
-        fetch(`${API}/api/v1/instagram/media?client_id=${selectedClient}`)
+        authFetch(`${API}/api/v1/instagram/profile?client_id=${selectedClient}`),
+        authFetch(`${API}/api/v1/instagram/media?client_id=${selectedClient}`)
       ])
+      if (profRes.status === 401 || mediaRes.status === 401) return handleLogout()
       setProfile(await profRes.json())
       const med = await mediaRes.json()
       setMedia(med.data ?? [])
@@ -140,8 +215,12 @@ export default function App() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { loadClients() }, [])
+  useEffect(() => { if (auth?.access_token) loadClients() }, [auth?.access_token])
   useEffect(() => { if (selectedClient) fetchData() }, [selectedClient])
+
+  if (!auth?.access_token) {
+    return <LoginScreen onLogin={handleLogin} />
+  }
 
   const NavItem = ({ icon: Icon, label, active, onClick }) => (
     <button onClick={onClick} style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"10px 14px",borderRadius:"10px",border:"none",cursor:"pointer",background:active?"rgba(168,85,247,0.15)":"transparent",color:active?"#c084fc":"#475569",fontSize:"14px",marginBottom:"2px"}}>
@@ -152,11 +231,10 @@ export default function App() {
   return (
     <div style={{display:"flex",minHeight:"100vh",background:"#08080f",color:"#e2e8f0"}}>
 
-      {/* Sidebar */}
       <div style={{width:"230px",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"28px 16px",display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{marginBottom:"24px",paddingLeft:"4px"}}>
           <p style={{color:"#f8fafc",fontWeight:"700",fontSize:"15px"}}>Meta Dash</p>
-          <p style={{color:"#334155",fontSize:"12px"}}>Up Clientes</p>
+          <p style={{color:"#334155",fontSize:"12px"}}>{auth.user?.name} • {auth.user?.role}</p>
         </div>
 
         <ClientSwitcher clients={clients} selected={selectedClient} onSelect={setSelectedClient} onAdd={() => setShowAddModal(true)}/>
@@ -165,10 +243,12 @@ export default function App() {
         <NavItem icon={Image} label="Publicações" active={tab==="media"} onClick={()=>setTab("media")}/>
         <NavItem icon={BarChart2} label="Campanhas" active={tab==="ads"} onClick={()=>setTab("ads")}/>
         <div style={{flex:1}}/>
+        <button onClick={handleLogout} style={{display:"flex",alignItems:"center",gap:"8px",padding:"10px",borderRadius:"10px",border:"none",background:"transparent",color:"#ef4444",cursor:"pointer"}}>
+          <LogOut size={16}/> Sair
+        </button>
         <NavItem icon={Settings} label="Configurações" active={tab==="settings"} onClick={()=>setTab("settings")}/>
       </div>
 
-      {/* Main */}
       <div style={{flex:1,padding:"40px 48px",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"40px"}}>
           <div>
@@ -253,7 +333,7 @@ export default function App() {
         {tab==="ads" && <div style={{textAlign:"center",color:"#334155",marginTop:"80px"}}>Campanhas em breve.</div>}
       </div>
 
-      {showAddModal && <AddClientModal onClose={() => setShowAddModal(false)} onSave={() => { setShowAddModal(false); loadClients() }}/>}
+      {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} onSave={() => { setShowAddModal(false); loadClients() }}/>}      
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder{color:#334155}`}</style>
     </div>
