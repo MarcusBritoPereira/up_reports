@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from app.config import META_IG_ID, META_ACCESS_TOKEN, META_BASE_URL
+from app.core.secrets import decrypt_secret
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Client, User, UserClientAccess
@@ -25,7 +26,7 @@ def get_client_creds(client_id: int | None, current: User, db: Session):
             if not allowed:
                 raise HTTPException(status_code=403, detail="Usuário sem acesso a este cliente")
 
-        return c.ig_id, c.access_token
+        return c.ig_id, decrypt_secret(c.access_token)
 
     if current.role != "admin":
         raise HTTPException(status_code=400, detail="client_id é obrigatório para este perfil")

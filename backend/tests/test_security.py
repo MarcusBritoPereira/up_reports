@@ -1,10 +1,12 @@
 import unittest
 
+from app.core.secrets import decrypt_secret, encrypt_secret
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
+    decode_token,
     hash_password,
     verify_password,
 )
@@ -28,6 +30,18 @@ class SecurityTests(unittest.TestCase):
         payload = decode_refresh_token(token)
         self.assertEqual(payload["sub"]["id"], 1)
         self.assertEqual(payload["type"], "refresh")
+
+    def test_token_type_validation(self):
+        refresh = create_refresh_token({"id": 1}, expires_in=60)
+        with self.assertRaises(ValueError):
+            decode_token(refresh, expected_type="access")
+
+    def test_secret_encryption_roundtrip(self):
+        original = "EAABsbCS1iHgBAD..."
+        sealed = encrypt_secret(original)
+        self.assertTrue(sealed.startswith("enc:v1:"))
+        opened = decrypt_secret(sealed)
+        self.assertEqual(original, opened)
 
 
 if __name__ == "__main__":

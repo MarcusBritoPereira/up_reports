@@ -45,3 +45,13 @@ class UserClientAccess(Base):
 
     user = relationship("User", back_populates="client_access")
     client = relationship("Client", back_populates="user_access")
+
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String, nullable=False, unique=True, index=True)
+    token_type = Column(String, nullable=False)
+    revoked_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)

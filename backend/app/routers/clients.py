@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from app.core.secrets import encrypt_secret
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models import Client, User, UserClientAccess
@@ -47,7 +48,9 @@ def list_clients(current: User = Depends(get_current_user), db: Session = Depend
 
 @router.post("/")
 def create_client(data: ClientCreate, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
-    client = Client(**data.model_dump())
+    payload = data.model_dump()
+    payload["access_token"] = encrypt_secret(payload["access_token"])
+    client = Client(**payload)
     db.add(client)
     db.commit()
     db.refresh(client)

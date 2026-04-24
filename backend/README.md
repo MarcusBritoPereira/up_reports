@@ -33,6 +33,7 @@
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
 - `GET /api/v1/users` (admin)
 - `POST /api/v1/users` (admin)
@@ -50,3 +51,5 @@
 - Primeiro usuário pode ser criado via `/auth/register` quando base está vazia.
 - Login possui proteção simples contra força-bruta (bloqueio temporário por tentativas).
 - Resposta de `clients` não expõe `access_token`.
+- `refresh_token` é rotacionado no endpoint `/auth/refresh` e o antigo é revogado.
+- `access_token` de cliente é armazenado cifrado (envelope `enc:v1`).
