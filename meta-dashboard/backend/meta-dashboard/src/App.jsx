@@ -69,7 +69,7 @@ function AddClientModal({ onClose, onSave }) {
   const save = async () => {
     if (!form.name || !form.ig_id || !form.access_token) return
     setSaving(true)
-    await fetch(`${API}/api/clients/`, {
+    await fetch(`${API}/api/v1/clients/`, {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(form)
     })
@@ -117,7 +117,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false)
 
   const loadClients = async () => {
-    const r = await fetch(`${API}/api/clients/`)
+    const r = await fetch(`${API}/api/v1/clients/`)
     const data = await r.json()
     setClients(data)
     if (data.length > 0 && !selectedClient) setSelectedClient(data[0].id)
@@ -130,8 +130,8 @@ export default function App() {
     setMedia([])
     try {
       const [profRes, mediaRes] = await Promise.all([
-        fetch(`${API}/api/instagram/profile?client_id=${selectedClient}`),
-        fetch(`${API}/api/instagram/media?client_id=${selectedClient}`)
+        fetch(`${API}/api/v1/instagram/profile?client_id=${selectedClient}`),
+        fetch(`${API}/api/v1/instagram/media?client_id=${selectedClient}`)
       ])
       setProfile(await profRes.json())
       const med = await mediaRes.json()

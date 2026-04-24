@@ -1,9 +1,11 @@
-from dotenv import load_dotenv
-import os
+"""Compat layer para configuração legada.
 
-load_dotenv()
+Preferir usar `app.core.config.settings` em novos módulos.
+"""
 
-META_PAGE_ID = os.getenv("META_PAGE_ID")
-META_IG_ID = os.getenv("META_IG_ID")
-META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-META_BASE_URL = "https://graph.facebook.com/v21.0"
+from app.core.config import settings
+
+META_PAGE_ID = settings.meta_page_id
+META_IG_ID = settings.meta_ig_id
+META_ACCESS_TOKEN = settings.meta_access_token
+META_BASE_URL = settings.meta_base_url
