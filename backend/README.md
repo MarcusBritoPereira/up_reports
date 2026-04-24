@@ -21,6 +21,10 @@
 - `AUTH_ACCESS_TOKEN_TTL_SECONDS`
 - `AUTH_REFRESH_TOKEN_TTL_SECONDS`
 - `AUTH_ALLOW_PUBLIC_REGISTRATION`
+- `FRONTEND_URL`
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_OAUTH_REDIRECT_URI`
 - `META_PAGE_ID`
 - `META_IG_ID`
 - `META_ACCESS_TOKEN`
@@ -38,6 +42,8 @@
 - `GET /api/v1/users` (admin)
 - `POST /api/v1/users` (admin)
 - `PATCH /api/v1/users/{user_id}` (admin)
+- `GET /api/v1/oauth/meta/start` (admin)
+- `GET /api/v1/oauth/meta/callback`
 - `GET/POST/DELETE /api/v1/clients`
 - `POST /api/v1/clients/{client_id}/access` (admin)
 - `GET /api/v1/instagram/profile`
@@ -53,3 +59,10 @@
 - Resposta de `clients` não expõe `access_token`.
 - `refresh_token` é rotacionado no endpoint `/auth/refresh` e o antigo é revogado.
 - `access_token` de cliente é armazenado cifrado (envelope `enc:v1`).
+
+## Fluxo OAuth Meta (nova UX)
+
+1. Usuário informa apenas nome do cliente e clica em **Entrar com Instagram** ou **Entrar com Facebook**.
+2. Backend cria URL OAuth e redireciona para Meta Login.
+3. Callback troca `code` por token, busca página/IG Business e cria/atualiza o cliente automaticamente.
+4. O token é armazenado cifrado e nunca exibido na UI.

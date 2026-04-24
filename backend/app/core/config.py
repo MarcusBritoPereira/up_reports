@@ -31,10 +31,15 @@ class Settings:
 
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
 
+    frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
     auth_access_token_ttl_seconds: int = int(os.getenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "3600"))
     auth_refresh_token_ttl_seconds: int = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_SECONDS", "604800"))
     auth_allow_public_registration: bool = os.getenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
 
+    meta_app_id: str | None = os.getenv("META_APP_ID")
+    meta_app_secret: str | None = os.getenv("META_APP_SECRET")
+    meta_oauth_redirect_uri: str | None = os.getenv("META_OAUTH_REDIRECT_URI")
     meta_page_id: str | None = os.getenv("META_PAGE_ID")
     meta_ig_id: str | None = os.getenv("META_IG_ID")
     meta_access_token: str | None = os.getenv("META_ACCESS_TOKEN")

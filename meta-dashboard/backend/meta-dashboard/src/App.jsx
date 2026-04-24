@@ -106,46 +106,57 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
   )
 }
 
-function AddClientModal({ onClose, onSave, authFetch }) {
-  const [form, setForm] = useState({ name:"", page_id:"", ig_id:"", access_token:"" })
-  const [saving, setSaving] = useState(false)
+function AddClientModal({ onClose, authFetch }) {
+  const [clientName, setClientName] = useState("")
+  const [loadingProvider, setLoadingProvider] = useState(null)
 
-  const save = async () => {
-    if (!form.name || !form.ig_id || !form.access_token) return
-    setSaving(true)
-    await authFetch(`${API}/api/v1/clients/`, {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(form)
-    })
-    setSaving(false)
-    onSave()
+  const connectMeta = async (provider) => {
+    if (!clientName || clientName.trim().length < 2) return
+    setLoadingProvider(provider)
+    try {
+      const query = new URLSearchParams({ provider, client_name: clientName.trim() })
+      const r = await authFetch(`${API}/api/v1/oauth/meta/start?${query.toString()}`)
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao iniciar conexão")
+      window.location.href = data.auth_url
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoadingProvider(null)
+    }
   }
-
-  const field = (label, key, placeholder) => (
-    <div style={{marginBottom:"16px"}}>
-      <p style={{color:"#64748b",fontSize:"12px",marginBottom:"6px"}}>{label}</p>
-      <input value={form[key]} onChange={e => setForm({...form,[key]:e.target.value})}
-        placeholder={placeholder}
-        style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"#e2e8f0",fontSize:"14px",outline:"none"}}/>
-    </div>
-  )
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
-      <div style={{background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"32px",width:"440px"}}>
-        <h3 style={{color:"#f1f5f9",fontWeight:"700",fontSize:"18px",marginBottom:"24px"}}>Adicionar cliente</h3>
-        {field("Nome do cliente", "name", "Ex: João Silva")}
-        {field("Page ID (Facebook)", "page_id", "Ex: 1087241137805297")}
-        {field("Instagram Business ID", "ig_id", "Ex: 17841401265357070")}
-        {field("Access Token", "access_token", "EAAUEl4mFF...")}
-        <div style={{display:"flex",gap:"12px",marginTop:"8px"}}>
-          <button onClick={onClose} style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"#94a3b8",cursor:"pointer",fontSize:"14px"}}>
-            Cancelar
+      <div style={{background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"32px",width:"460px"}}>
+        <h3 style={{color:"#f1f5f9",fontWeight:"700",fontSize:"18px",marginBottom:"10px"}}>Conectar cliente</h3>
+        <p style={{color:"#64748b",fontSize:"13px",marginBottom:"18px"}}>Escolha como conectar: login do Instagram ou login do Facebook (BM).</p>
+
+        <div style={{marginBottom:"18px"}}>
+          <p style={{color:"#64748b",fontSize:"12px",marginBottom:"6px"}}>Nome do cliente</p>
+          <input value={clientName} onChange={e => setClientName(e.target.value)}
+            placeholder="Ex: João Silva"
+            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"#e2e8f0",fontSize:"14px",outline:"none"}}/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
+          <button onClick={() => connectMeta("instagram")} disabled={loadingProvider!==null}
+            style={{padding:"12px",background:"rgba(236,72,153,0.14)",border:"1px solid rgba(236,72,153,0.35)",borderRadius:"10px",color:"#f9a8d4",cursor:"pointer",fontWeight:"600"}}>
+            {loadingProvider === "instagram" ? "Conectando..." : "Entrar com Instagram"}
           </button>
-          <button onClick={save} style={{flex:1,padding:"12px",background:"#7c3aed",border:"none",borderRadius:"10px",color:"white",cursor:"pointer",fontSize:"14px",fontWeight:"600"}}>
-            {saving ? "Salvando..." : "Salvar cliente"}
+          <button onClick={() => connectMeta("facebook")} disabled={loadingProvider!==null}
+            style={{padding:"12px",background:"rgba(59,130,246,0.14)",border:"1px solid rgba(59,130,246,0.35)",borderRadius:"10px",color:"#93c5fd",cursor:"pointer",fontWeight:"600"}}>
+            {loadingProvider === "facebook" ? "Conectando..." : "Entrar com Facebook"}
           </button>
         </div>
+
+        <p style={{color:"#475569",fontSize:"12px",lineHeight:1.45,marginBottom:"16px"}}>
+          O fluxo OAuth evita colar manualmente Page ID, Instagram ID e Access Token.
+        </p>
+
+        <button onClick={onClose} style={{width:"100%",padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"#94a3b8",cursor:"pointer",fontSize:"14px"}}>
+          Fechar
+        </button>
       </div>
     </div>
   )
@@ -216,6 +227,25 @@ export default function App() {
   }
 
   useEffect(() => { if (auth?.access_token) loadClients() }, [auth?.access_token])
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthStatus = params.get("oauth_status")
+    if (!oauthStatus) return
+
+    if (oauthStatus === "success") {
+      loadClients()
+      alert("Conta conectada com sucesso.")
+    } else if (oauthStatus === "error_no_instagram") {
+      alert("Conta conectada sem Instagram Business vinculado.")
+    } else if (oauthStatus === "error_no_pages") {
+      alert("Nenhuma página encontrada na conta conectada.")
+    } else {
+      alert("Falha ao conectar conta Meta.")
+    }
+
+    window.history.replaceState({}, "", window.location.pathname)
+  }, [])
+
   useEffect(() => { if (selectedClient) fetchData() }, [selectedClient])
 
   if (!auth?.access_token) {
@@ -333,7 +363,7 @@ export default function App() {
         {tab==="ads" && <div style={{textAlign:"center",color:"#334155",marginTop:"80px"}}>Campanhas em breve.</div>}
       </div>
 
-      {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} onSave={() => { setShowAddModal(false); loadClients() }}/>}      
+      {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} />}      
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder{color:#334155}`}</style>
     </div>
