@@ -40,19 +40,38 @@ function Toasts({ items, onDismiss }) {
 }
 
 function OAuthPagePicker({ open, onClose, pending, onSelect, loading }) {
+  const [selectedAd, setSelectedAd] = useState({})
   if (!open) return null
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:210}}>
-      <div style={{background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"24px",width:"560px"}}>
+      <div style={{background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"24px",width:"620px"}}>
         <h3 style={{color:"#f1f5f9",fontWeight:"700",fontSize:"18px",marginBottom:"8px"}}>Escolha a página/BM</h3>
-        <p style={{color:"#64748b",fontSize:"13px",marginBottom:"16px"}}>Encontramos múltiplas páginas. Selecione qual vincular para o cliente.</p>
-        <div style={{display:"grid",gap:"10px",maxHeight:"320px",overflowY:"auto",marginBottom:"16px"}}>
+        <p style={{color:"#64748b",fontSize:"13px",marginBottom:"16px"}}>Selecione a página e, se desejar, a conta de anúncios para campanhas.</p>
+        <div style={{display:"grid",gap:"10px",maxHeight:"360px",overflowY:"auto",marginBottom:"16px"}}>
           {(pending?.pages || []).map(page => (
-            <button key={page.page_id} onClick={() => onSelect(page.page_id)} disabled={loading}
-              style={{textAlign:"left",padding:"12px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",cursor:"pointer",color:"#e2e8f0"}}>
-              <div style={{fontWeight:"600"}}>{page.page_name}</div>
-              <div style={{color:"#94a3b8",fontSize:"12px",marginTop:"4px"}}>@{page.ig_username} • IG ID {page.ig_id}</div>
-            </button>
+            <div key={page.page_id} style={{padding:"12px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px"}}>
+              <div style={{fontWeight:"600",color:"#e2e8f0"}}>{page.page_name}</div>
+              <div style={{color:"#94a3b8",fontSize:"12px",marginTop:"4px",marginBottom:"10px"}}>@{page.ig_username} • IG ID {page.ig_id}</div>
+              {(page.ad_accounts || []).length > 0 && (
+                <select
+                  value={selectedAd[page.page_id] ?? ""}
+                  onChange={(e) => setSelectedAd(prev => ({ ...prev, [page.page_id]: e.target.value }))}
+                  style={{width:"100%",marginBottom:"10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:"8px",padding:"8px",color:"#e2e8f0"}}
+                >
+                  <option value="">Sem conta de anúncio</option>
+                  {(page.ad_accounts || []).map(ad => (
+                    <option key={ad.id} value={ad.id}>{ad.name} ({ad.id})</option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => onSelect(page.page_id, selectedAd[page.page_id] || null)}
+                disabled={loading}
+                style={{width:"100%",padding:"10px",background:"rgba(124,58,237,0.22)",border:"1px solid rgba(124,58,237,0.4)",borderRadius:"8px",color:"#ddd6fe",cursor:"pointer"}}
+              >
+                {loading ? "Conectando..." : "Selecionar esta página"}
+              </button>
+            </div>
           ))}
         </div>
         <button onClick={onClose} style={{width:"100%",padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"#94a3b8",cursor:"pointer",fontSize:"14px"}}>Fechar</button>
@@ -235,7 +254,7 @@ export default function App() {
 
   const dismissToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
 
-  const openOauthPicker = async (oauthSession, autoPageId = null) => {
+  const openOauthPicker = async (oauthSession, autoPageId = null, autoAdAccountId = null) => {
     try {
       const r = await authFetch(`${API}/api/v1/oauth/meta/pending/${oauthSession}`)
       const data = await r.json()
@@ -244,20 +263,20 @@ export default function App() {
       setShowPicker(true)
 
       if (autoPageId) {
-        await completeOauthSelection(oauthSession, autoPageId)
+        await completeOauthSelection(oauthSession, autoPageId, autoAdAccountId)
       }
     } catch (e) {
       pushToast(e.message, "error")
     }
   }
 
-  const completeOauthSelection = async (oauthSession, pageId) => {
+  const completeOauthSelection = async (oauthSession, pageId, adAccountId = null) => {
     setCompletingOauth(true)
     try {
       const r = await authFetch(`${API}/api/v1/oauth/meta/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ oauth_session: oauthSession, page_id: pageId }),
+        body: JSON.stringify({ oauth_session: oauthSession, page_id: pageId, ad_account_id: adAccountId }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data?.detail || "Falha ao concluir conexão")
@@ -318,10 +337,11 @@ export default function App() {
     const oauthStatus = params.get("oauth_status")
     const oauthSession = params.get("oauth_session")
     const autoPageId = params.get("auto_page_id")
+    const autoAdAccountId = params.get("auto_ad_account_id")
     if (!oauthStatus) return
 
     if (oauthStatus === "select" && oauthSession) {
-      openOauthPicker(oauthSession, autoPageId)
+      openOauthPicker(oauthSession, autoPageId, autoAdAccountId)
     } else if (oauthStatus === "error_no_instagram") {
       pushToast("Conta conectada sem Instagram Business vinculado.", "error")
     } else if (oauthStatus === "error_no_pages") {
@@ -334,6 +354,22 @@ export default function App() {
   }, [])
 
   useEffect(() => { if (selectedClient) fetchData() }, [selectedClient])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!selectedClient) return
+      try {
+        const r = await authFetch(`${API}/api/v1/oauth/meta/reconnect-required?client_id=${selectedClient}`)
+        const data = await r.json()
+        if (r.ok && data.requires_reconnect) {
+          pushToast("Conta Meta precisa reconectar para atualizar dados de forma automática.", "error")
+        }
+      } catch {
+        // silencioso
+      }
+    }
+    run()
+  }, [selectedClient])
 
   if (!auth?.access_token) {
     return <LoginScreen onLogin={handleLogin} />
@@ -451,7 +487,7 @@ export default function App() {
       </div>
 
       {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} onToast={pushToast} />}
-      <OAuthPagePicker open={showPicker} pending={oauthPending} loading={completingOauth} onSelect={(pageId) => completeOauthSelection(oauthPending?.oauth_session, pageId)} onClose={() => setShowPicker(false)} />
+      <OAuthPagePicker open={showPicker} pending={oauthPending} loading={completingOauth} onSelect={(pageId, adAccountId) => completeOauthSelection(oauthPending?.oauth_session, pageId, adAccountId)} onClose={() => setShowPicker(false)} />
       <Toasts items={toasts} onDismiss={dismissToast} />      
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder{color:#334155}`}</style>

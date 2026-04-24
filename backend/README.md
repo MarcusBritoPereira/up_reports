@@ -2,13 +2,16 @@
 
 ## Estrutura
 
-- `app/main.py`: bootstrap da aplicação
+- `app/main.py`: bootstrap da aplicação + middleware de observabilidade (`X-Request-ID`)
 - `app/api/v1/router.py`: agregador de rotas versionadas
 - `app/core/config.py`: configurações por ambiente
 - `app/core/errors.py`: handlers globais de erro
 - `app/core/logging.py`: setup de logs
 - `app/core/security.py`: hash de senha + tokens de acesso/refresh
+- `app/core/secrets.py`: cifragem de segredos em repouso
+- `app/core/audit.py`: utilitário de auditoria
 - `app/routers/*`: endpoints de domínio
+- `alembic/*`: migrations do banco
 
 ## Variáveis de ambiente
 
@@ -21,6 +24,7 @@
 - `AUTH_ACCESS_TOKEN_TTL_SECONDS`
 - `AUTH_REFRESH_TOKEN_TTL_SECONDS`
 - `AUTH_ALLOW_PUBLIC_REGISTRATION`
+- `OAUTH_SESSION_TTL_SECONDS`
 - `FRONTEND_URL`
 - `META_APP_ID`
 - `META_APP_SECRET`
@@ -46,26 +50,33 @@
 - `GET /api/v1/oauth/meta/callback`
 - `GET /api/v1/oauth/meta/pending/{oauth_session}` (admin)
 - `POST /api/v1/oauth/meta/complete` (admin)
+- `GET /api/v1/oauth/meta/reconnect-required`
 - `GET/POST/DELETE /api/v1/clients`
 - `POST /api/v1/clients/{client_id}/access` (admin)
 - `GET /api/v1/instagram/profile`
 - `GET /api/v1/instagram/insights`
 - `GET /api/v1/instagram/media`
 - `GET /api/v1/ads/campaigns`
+- `POST /api/v1/reports/snapshots/collect`
+- `GET /api/v1/reports/snapshots`
+- `GET /api/v1/reports/summary`
+- `GET /api/v1/reports/export/csv`
+- `GET /api/v1/reports/export/pdf`
 
-## Segurança
+## Sprint A (segurança/infra)
 
-- Registro público pode ser bloqueado via `AUTH_ALLOW_PUBLIC_REGISTRATION=false`.
-- Primeiro usuário pode ser criado via `/auth/register` quando base está vazia.
-- Login possui proteção simples contra força-bruta (bloqueio temporário por tentativas).
-- Resposta de `clients` não expõe `access_token`.
-- `refresh_token` é rotacionado no endpoint `/auth/refresh` e o antigo é revogado.
-- `access_token` de cliente é armazenado cifrado (envelope `enc:v1`).
+- Persistência de estado OAuth em banco (`oauth_sessions`) com expiração/cleanup.
+- Migration Alembic inicial (`alembic/versions/0001_init.py`).
+- Middleware de observabilidade com `request_id`.
 
-## Fluxo OAuth Meta (nova UX)
+## Sprint B (dados/relatórios)
 
-1. Usuário informa apenas nome do cliente e clica em **Entrar com Instagram** ou **Entrar com Facebook**.
-2. Backend cria URL OAuth e redireciona para Meta Login.
-3. Callback troca `code` por token, busca página/IG Business e cria/atualiza o cliente automaticamente.
-4. O token é armazenado cifrado e nunca exibido na UI.
-5. Ao concluir, o usuário que iniciou o OAuth é vinculado automaticamente ao cliente criado/atualizado.
+- Snapshot diário sob demanda (`metric_snapshots`).
+- Endpoints de resumo e histórico.
+- Exportação CSV e PDF básico.
+
+## Sprint C (produto/escala)
+
+- Seleção de Página + BM/Ad Account no fluxo OAuth.
+- Endpoint para detectar reconexão necessária.
+- Auditoria de ações de relatório.

@@ -36,6 +36,7 @@ class Settings:
     auth_access_token_ttl_seconds: int = int(os.getenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "3600"))
     auth_refresh_token_ttl_seconds: int = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_SECONDS", "604800"))
     auth_allow_public_registration: bool = os.getenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
+    oauth_session_ttl_seconds: int = int(os.getenv("OAUTH_SESSION_TTL_SECONDS", "900"))
 
     meta_app_id: str | None = os.getenv("META_APP_ID")
     meta_app_secret: str | None = os.getenv("META_APP_SECRET")

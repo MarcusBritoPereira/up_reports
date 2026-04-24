@@ -27,6 +27,7 @@ def _client_response(client: Client) -> dict:
         "name": client.name,
         "page_id": client.page_id,
         "ig_id": client.ig_id,
+        "ad_account_id": client.ad_account_id,
         "created_at": client.created_at,
     }
 
