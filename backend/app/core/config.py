@@ -1,8 +1,24 @@
 import os
 from dataclasses import dataclass
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+
+def _load_dotenv() -> None:
+    env_path = Path(".env")
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        cleaned = line.strip()
+        if not cleaned or cleaned.startswith("#") or "=" not in cleaned:
+            continue
+        key, value = cleaned.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv()
 
 
 @dataclass(frozen=True)
@@ -14,6 +30,10 @@ class Settings:
     app_secret: str = os.getenv("APP_SECRET", "change-me-in-production")
 
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
+
+    auth_access_token_ttl_seconds: int = int(os.getenv("AUTH_ACCESS_TOKEN_TTL_SECONDS", "3600"))
+    auth_refresh_token_ttl_seconds: int = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_SECONDS", "604800"))
+    auth_allow_public_registration: bool = os.getenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
 
     meta_page_id: str | None = os.getenv("META_PAGE_ID")
     meta_ig_id: str | None = os.getenv("META_IG_ID")

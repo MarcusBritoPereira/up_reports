@@ -20,17 +20,29 @@ class ClientAccessCreate(BaseModel):
     user_id: int
 
 
+def _client_response(client: Client) -> dict:
+    return {
+        "id": client.id,
+        "name": client.name,
+        "page_id": client.page_id,
+        "ig_id": client.ig_id,
+        "created_at": client.created_at,
+    }
+
+
 @router.get("/")
 def list_clients(current: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if current.role == "admin":
-        return db.query(Client).all()
+        clients = db.query(Client).all()
+    else:
+        clients = (
+            db.query(Client)
+            .join(UserClientAccess, UserClientAccess.client_id == Client.id)
+            .filter(UserClientAccess.user_id == current.id)
+            .all()
+        )
 
-    return (
-        db.query(Client)
-        .join(UserClientAccess, UserClientAccess.client_id == Client.id)
-        .filter(UserClientAccess.user_id == current.id)
-        .all()
-    )
+    return [_client_response(client) for client in clients]
 
 
 @router.post("/")
@@ -39,7 +51,7 @@ def create_client(data: ClientCreate, _: User = Depends(require_roles("admin")),
     db.add(client)
     db.commit()
     db.refresh(client)
-    return client
+    return _client_response(client)
 
 
 @router.post("/{client_id}/access")
