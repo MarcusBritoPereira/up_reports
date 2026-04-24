@@ -25,6 +25,42 @@ function StatCard({ icon: Icon, label, value, iconBg, iconColor }) {
   )
 }
 
+
+function Toasts({ items, onDismiss }) {
+  return (
+    <div style={{position:"fixed",top:"16px",right:"16px",display:"grid",gap:"10px",zIndex:400}}>
+      {items.map(t => (
+        <div key={t.id} style={{minWidth:"280px",maxWidth:"380px",padding:"12px 14px",borderRadius:"10px",background:t.type==="error"?"#3f1d1d":"#1e293b",border:t.type==="error"?"1px solid #ef4444":"1px solid #334155",color:"#e2e8f0",fontSize:"13px",display:"flex",justifyContent:"space-between",gap:"12px"}}>
+          <span>{t.message}</span>
+          <button onClick={() => onDismiss(t.id)} style={{background:"transparent",border:"none",color:"#94a3b8",cursor:"pointer"}}>✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function OAuthPagePicker({ open, onClose, pending, onSelect, loading }) {
+  if (!open) return null
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:210}}>
+      <div style={{background:"#111",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"24px",width:"560px"}}>
+        <h3 style={{color:"#f1f5f9",fontWeight:"700",fontSize:"18px",marginBottom:"8px"}}>Escolha a página/BM</h3>
+        <p style={{color:"#64748b",fontSize:"13px",marginBottom:"16px"}}>Encontramos múltiplas páginas. Selecione qual vincular para o cliente.</p>
+        <div style={{display:"grid",gap:"10px",maxHeight:"320px",overflowY:"auto",marginBottom:"16px"}}>
+          {(pending?.pages || []).map(page => (
+            <button key={page.page_id} onClick={() => onSelect(page.page_id)} disabled={loading}
+              style={{textAlign:"left",padding:"12px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",cursor:"pointer",color:"#e2e8f0"}}>
+              <div style={{fontWeight:"600"}}>{page.page_name}</div>
+              <div style={{color:"#94a3b8",fontSize:"12px",marginTop:"4px"}}>@{page.ig_username} • IG ID {page.ig_id}</div>
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{width:"100%",padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"#94a3b8",cursor:"pointer",fontSize:"14px"}}>Fechar</button>
+      </div>
+    </div>
+  )
+}
+
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -106,7 +142,7 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
   )
 }
 
-function AddClientModal({ onClose, authFetch }) {
+function AddClientModal({ onClose, authFetch, onToast }) {
   const [clientName, setClientName] = useState("")
   const [loadingProvider, setLoadingProvider] = useState(null)
 
@@ -120,7 +156,7 @@ function AddClientModal({ onClose, authFetch }) {
       if (!r.ok) throw new Error(data?.detail || "Falha ao iniciar conexão")
       window.location.href = data.auth_url
     } catch (e) {
-      alert(e.message)
+      onToast(e.message, "error")
     } finally {
       setLoadingProvider(null)
     }
@@ -175,6 +211,10 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState("dashboard")
   const [showAddModal, setShowAddModal] = useState(false)
+  const [toasts, setToasts] = useState([])
+  const [oauthPending, setOauthPending] = useState(null)
+  const [showPicker, setShowPicker] = useState(false)
+  const [completingOauth, setCompletingOauth] = useState(false)
 
   const authFetch = (url, options = {}) => {
     return fetch(url, {
@@ -184,6 +224,52 @@ export default function App() {
         Authorization: `Bearer ${auth?.access_token}`,
       },
     })
+  }
+
+
+  const pushToast = (message, type = "info") => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4500)
+  }
+
+  const dismissToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
+
+  const openOauthPicker = async (oauthSession, autoPageId = null) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/oauth/meta/pending/${oauthSession}`)
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Não foi possível carregar páginas")
+      setOauthPending(data)
+      setShowPicker(true)
+
+      if (autoPageId) {
+        await completeOauthSelection(oauthSession, autoPageId)
+      }
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const completeOauthSelection = async (oauthSession, pageId) => {
+    setCompletingOauth(true)
+    try {
+      const r = await authFetch(`${API}/api/v1/oauth/meta/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oauth_session: oauthSession, page_id: pageId }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao concluir conexão")
+      pushToast(`Cliente ${data.client_name} conectado com sucesso.`)
+      setShowPicker(false)
+      setOauthPending(null)
+      loadClients()
+    } catch (e) {
+      pushToast(e.message, "error")
+    } finally {
+      setCompletingOauth(false)
+    }
   }
 
   const handleLogin = (payload) => {
@@ -230,17 +316,18 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const oauthStatus = params.get("oauth_status")
+    const oauthSession = params.get("oauth_session")
+    const autoPageId = params.get("auto_page_id")
     if (!oauthStatus) return
 
-    if (oauthStatus === "success") {
-      loadClients()
-      alert("Conta conectada com sucesso.")
+    if (oauthStatus === "select" && oauthSession) {
+      openOauthPicker(oauthSession, autoPageId)
     } else if (oauthStatus === "error_no_instagram") {
-      alert("Conta conectada sem Instagram Business vinculado.")
+      pushToast("Conta conectada sem Instagram Business vinculado.", "error")
     } else if (oauthStatus === "error_no_pages") {
-      alert("Nenhuma página encontrada na conta conectada.")
+      pushToast("Nenhuma página encontrada na conta conectada.", "error")
     } else {
-      alert("Falha ao conectar conta Meta.")
+      pushToast("Falha ao conectar conta Meta.", "error")
     }
 
     window.history.replaceState({}, "", window.location.pathname)
@@ -363,7 +450,9 @@ export default function App() {
         {tab==="ads" && <div style={{textAlign:"center",color:"#334155",marginTop:"80px"}}>Campanhas em breve.</div>}
       </div>
 
-      {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} />}      
+      {showAddModal && <AddClientModal authFetch={authFetch} onClose={() => setShowAddModal(false)} onToast={pushToast} />}
+      <OAuthPagePicker open={showPicker} pending={oauthPending} loading={completingOauth} onSelect={(pageId) => completeOauthSelection(oauthPending?.oauth_session, pageId)} onClose={() => setShowPicker(false)} />
+      <Toasts items={toasts} onDismiss={dismissToast} />      
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder{color:#334155}`}</style>
     </div>

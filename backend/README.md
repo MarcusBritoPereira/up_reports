@@ -44,6 +44,8 @@
 - `PATCH /api/v1/users/{user_id}` (admin)
 - `GET /api/v1/oauth/meta/start` (admin)
 - `GET /api/v1/oauth/meta/callback`
+- `GET /api/v1/oauth/meta/pending/{oauth_session}` (admin)
+- `POST /api/v1/oauth/meta/complete` (admin)
 - `GET/POST/DELETE /api/v1/clients`
 - `POST /api/v1/clients/{client_id}/access` (admin)
 - `GET /api/v1/instagram/profile`
@@ -66,3 +68,4 @@
 2. Backend cria URL OAuth e redireciona para Meta Login.
 3. Callback troca `code` por token, busca página/IG Business e cria/atualiza o cliente automaticamente.
 4. O token é armazenado cifrado e nunca exibido na UI.
+5. Ao concluir, o usuário que iniciou o OAuth é vinculado automaticamente ao cliente criado/atualizado.
