@@ -4,7 +4,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,9 @@ def _check_client_access(db: Session, client_id: int, current: User) -> Client:
     return c
 
 
-def _extract_insight(insights_data: list, metric: str) -> int | None:
+from typing import Optional, List, Dict
+
+def _extract_insight(insights_data: list, metric: str) -> Optional[int]:
     for row in insights_data:
         if row.get("name") == metric:
             values = row.get("values") or []
@@ -45,7 +47,12 @@ def _extract_insight(insights_data: list, metric: str) -> int | None:
 
 
 @router.post("/snapshots/collect")
-async def collect_snapshot(client_id: int, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def collect_snapshot(
+    client_id: int, 
+    background_tasks: BackgroundTasks,
+    current: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     c = _check_client_access(db, client_id, current)
     token = decrypt_secret(c.access_token)
 
@@ -84,10 +91,25 @@ async def collect_snapshot(client_id: int, current: User = Depends(get_current_u
     db.add(snapshot)
     db.commit()
     db.refresh(snapshot)
+    
+    # Run heavy archive collections in background
+    background_tasks.add_task(run_heavy_collection, client_id, current, db)
 
     log_audit(db, action="report.snapshot.collect", user=current, details={"client_id": c.id, "snapshot_id": snapshot.id})
 
     return {"ok": True, "snapshot_id": snapshot.id, "snapshot_date": str(snapshot.snapshot_date)}
+
+async def run_heavy_collection(client_id: int, current: User, db: Session):
+    from app.routers.instagram import collect_active_stories, collect_audience_archive, collect_media_archive
+    try:
+        # We need a new session or be careful with the current one. 
+        # But for background tasks in FastAPI with Depends(get_db), it's better to manage it.
+        await collect_active_stories(client_id, current, db)
+        await collect_audience_archive(client_id, current, db)
+        await collect_media_archive(client_id, current, db)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to collect archives in background: {e}")
 
 
 @router.get("/snapshots")
@@ -117,17 +139,62 @@ def list_snapshots(client_id: int, days: int = 30, current: User = Depends(get_c
 
 @router.get("/summary")
 def report_summary(client_id: int, days: int = 30, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = list_snapshots(client_id=client_id, days=days, current=current, db=db)
-    if not rows:
-        return {"period_days": days, "total_snapshots": 0, "latest": None, "delta_followers": 0}
+    from datetime import date, timedelta
+    
+    # Query double the days to get previous period
+    all_rows = list_snapshots(client_id=client_id, days=days * 2, current=current, db=db)
+    
+    cutoff = date.today() - timedelta(days=days)
+    
+    current_rows = [r for r in all_rows if date.fromisoformat(r["date"]) > cutoff]
+    previous_rows = [r for r in all_rows if date.fromisoformat(r["date"]) <= cutoff]
+    
+    if not current_rows:
+        return {"period_days": days, "total_snapshots": 0, "latest": None, "deltas": {}, "totals": {}}
 
-    first = rows[0]
-    last = rows[-1]
+    latest = current_rows[-1]
+    last_previous = previous_rows[-1] if previous_rows else current_rows[0]
+    
+    # Calculate sums for daily metrics
+    def sum_metric(rows, metric):
+        return sum((r.get(metric) or 0) for r in rows)
+        
+    curr_reach = sum_metric(current_rows, "reach")
+    prev_reach = sum_metric(previous_rows, "reach")
+    
+    curr_imp = sum_metric(current_rows, "impressions")
+    prev_imp = sum_metric(previous_rows, "impressions")
+    
+    curr_views = sum_metric(current_rows, "profile_views")
+    prev_views = sum_metric(previous_rows, "profile_views")
+
+    def calc_pct(curr, prev):
+        if prev == 0: return 0
+        return round(((curr - prev) / prev) * 100, 2)
+
+    deltas = {
+        "followers": calc_pct(latest.get("followers") or 0, last_previous.get("followers") or 0),
+        "reach": calc_pct(curr_reach, prev_reach),
+        "impressions": calc_pct(curr_imp, prev_imp),
+        "profile_views": calc_pct(curr_views, prev_views)
+    }
+    
+    totals = {
+        "reach": curr_reach,
+        "impressions": curr_imp,
+        "profile_views": curr_views,
+        "prev_reach": prev_reach,
+        "prev_impressions": prev_imp,
+        "prev_profile_views": prev_views
+    }
+
     return {
         "period_days": days,
-        "total_snapshots": len(rows),
-        "latest": last,
-        "delta_followers": (last.get("followers") or 0) - (first.get("followers") or 0),
+        "total_snapshots": len(current_rows),
+        "latest": latest,
+        "totals": totals,
+        "deltas": deltas,
+        "delta_followers": (latest.get("followers") or 0) - (current_rows[0].get("followers") or 0),
     }
 
 

@@ -9,8 +9,10 @@ from app.models import User
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+from typing import Optional, List
+
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     if not credentials:

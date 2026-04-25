@@ -99,3 +99,57 @@ class AuditLog(Base):
     details = Column(Text, nullable=True)
     request_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class StoryArchive(Base):
+    __tablename__ = "story_archive"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    story_id = Column(String, nullable=False, unique=True, index=True)
+    media_url = Column(String, nullable=True)
+    timestamp = Column(DateTime, nullable=False)
+    
+    reach = Column(Integer, default=0)
+    impressions = Column(Integer, default=0)
+    replies = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    profile_visits = Column(Integer, default=0)
+    taps_forward = Column(Integer, default=0)
+    taps_back = Column(Integer, default=0)
+    exits = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AudienceArchive(Base):
+    __tablename__ = "audience_archive"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, index=True)
+    gender_age_json = Column(Text, nullable=True)
+    city_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class MediaArchive(Base):
+    __tablename__ = "media_archive"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    media_id = Column(String, nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, index=True)
+    
+    caption = Column(Text, nullable=True)
+    media_type = Column(String, nullable=True)
+    permalink = Column(String, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
+    timestamp = Column(DateTime, nullable=True)
+    
+    like_count = Column(Integer, default=0)
+    comments_count = Column(Integer, default=0)
+    reach = Column(Integer, default=0)
+    impressions = Column(Integer, default=0)
+    saved = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    plays = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow)

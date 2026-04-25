@@ -87,6 +87,34 @@ def grant_access(
     return {"ok": True}
 
 
+class ClientUpdate(BaseModel):
+    name: str
+
+@router.put("/{client_id}")
+def update_client(
+    client_id: int, 
+    data: ClientUpdate, 
+    current: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    c = db.query(Client).filter(Client.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    if current.role != "admin":
+        access = (
+            db.query(UserClientAccess)
+            .filter(UserClientAccess.user_id == current.id, UserClientAccess.client_id == c.id)
+            .first()
+        )
+        if not access:
+            raise HTTPException(status_code=403, detail="Sem acesso ao cliente")
+
+    c.name = data.name
+    db.commit()
+    db.refresh(c)
+    return _client_response(c)
+
 @router.delete("/{client_id}")
 def delete_client(client_id: int, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     client = db.query(Client).filter(Client.id == client_id).first()

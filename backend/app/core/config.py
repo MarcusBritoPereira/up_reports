@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, List
 
 
 def _load_dotenv() -> None:
@@ -23,10 +24,10 @@ _load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = os.getenv("APP_NAME", "Meta Dashboard API")
+    app_name: str = os.getenv("APP_NAME", "UP REPORTS API")
     app_env: str = os.getenv("APP_ENV", "development")
     app_debug: bool = os.getenv("APP_DEBUG", "false").lower() == "true"
-    app_cors_origins: str = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173")
+    app_cors_origins: str = os.getenv("APP_CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174")
     app_secret: str = os.getenv("APP_SECRET", "change-me-in-production")
 
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
@@ -38,12 +39,12 @@ class Settings:
     auth_allow_public_registration: bool = os.getenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "false").lower() == "true"
     oauth_session_ttl_seconds: int = int(os.getenv("OAUTH_SESSION_TTL_SECONDS", "900"))
 
-    meta_app_id: str | None = os.getenv("META_APP_ID")
-    meta_app_secret: str | None = os.getenv("META_APP_SECRET")
-    meta_oauth_redirect_uri: str | None = os.getenv("META_OAUTH_REDIRECT_URI")
-    meta_page_id: str | None = os.getenv("META_PAGE_ID")
-    meta_ig_id: str | None = os.getenv("META_IG_ID")
-    meta_access_token: str | None = os.getenv("META_ACCESS_TOKEN")
+    meta_app_id: Optional[str] = os.getenv("META_APP_ID")
+    meta_app_secret: Optional[str] = os.getenv("META_APP_SECRET")
+    meta_oauth_redirect_uri: Optional[str] = os.getenv("META_OAUTH_REDIRECT_URI")
+    meta_page_id: Optional[str] = os.getenv("META_PAGE_ID")
+    meta_ig_id: Optional[str] = os.getenv("META_IG_ID")
+    meta_access_token: Optional[str] = os.getenv("META_ACCESS_TOKEN")
     meta_base_url: str = os.getenv("META_BASE_URL", "https://graph.facebook.com/v21.0")
 
     @property
