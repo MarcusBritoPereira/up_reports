@@ -156,4 +156,38 @@ async def get_ad_creatives_insights(
         r = await client.get(url, params=params)
         if r.status_code != 200:
             return {"data": [], "error": r.json()}
-        return r.json()
+        
+        data = r.json().get("data", [])
+        if not data:
+            return {"data": []}
+
+        # Fetch creative details for these ads
+        ad_ids = [item["ad_id"] for item in data]
+        # Limit to first 50 to avoid huge requests (already limited by params)
+        
+        ads_details_params = {
+            "ids": ",".join(ad_ids),
+            "fields": "id,creative{id,thumbnail_url,effective_object_story_id}",
+            "access_token": token
+        }
+        details_r = await client.get(f"{META_BASE_URL}", params=ads_details_params)
+        
+        details_map = {}
+        if details_r.status_code == 200:
+            details_map = details_r.json()
+
+        for item in data:
+            ad_id = item["ad_id"]
+            details = details_map.get(ad_id, {})
+            creative = details.get("creative", {})
+            item["thumbnail_url"] = creative.get("thumbnail_url")
+            
+            # Construct a preview link if possible
+            story_id = creative.get("effective_object_story_id")
+            if story_id:
+                # Common format for facebook/instagram posts
+                item["permalink_url"] = f"https://facebook.com/{story_id}"
+            else:
+                item["permalink_url"] = None
+
+        return {"data": data}

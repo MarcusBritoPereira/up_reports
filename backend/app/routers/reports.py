@@ -13,7 +13,8 @@ from app.core.config import settings
 from app.core.secrets import decrypt_secret
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Client, MetricSnapshot, User, UserClientAccess
+from app.models import Client, MetricSnapshot, User, UserClientAccess, ReportHistory
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -56,7 +57,11 @@ async def collect_snapshot(
     c = _check_client_access(db, client_id, current)
     token = decrypt_secret(c.access_token)
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    # Check if we already have snapshots. If not, we try to fetch historical data (last 30 days)
+    has_history = db.query(MetricSnapshot).filter(MetricSnapshot.client_id == c.id).first()
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Fetch current profile state
         profile_resp = await client.get(
             f"{settings.meta_base_url}/{c.ig_id}",
             params={
@@ -64,47 +69,89 @@ async def collect_snapshot(
                 "access_token": token,
             },
         )
-        insights_resp = await client.get(
-            f"{settings.meta_base_url}/{c.ig_id}/insights",
-            params={"metric": "reach,impressions,profile_views", "period": "day", "access_token": token},
-        )
+        if profile_resp.status_code != 200:
+            raise HTTPException(status_code=profile_resp.status_code, detail=profile_resp.json())
+        profile = profile_resp.json()
 
-    if profile_resp.status_code != 200:
-        raise HTTPException(status_code=profile_resp.status_code, detail=profile_resp.json())
-    if insights_resp.status_code != 200:
-        raise HTTPException(status_code=insights_resp.status_code, detail=insights_resp.json())
+        # 2. Fetch insights
+        # If no history, we fetch last 30 days. Meta allows since/until for daily metrics.
+        metrics = "reach,impressions,profile_views,phone_call_clicks,text_message_clicks,email_contacts,get_directions_clicks,website_clicks"
+        params = {
+            "metric": metrics,
+            "period": "day",
+            "access_token": token
+        }
+        
+        if not has_history:
+            # Fetch last 30 days to populate the dashboard immediately
+            until = datetime.now()
+            since = until - timedelta(days=30)
+            params["since"] = int(since.timestamp())
+            params["until"] = int(until.timestamp())
 
-    profile = profile_resp.json()
-    insights = insights_resp.json().get("data", [])
+        insights_resp = await client.get(f"{settings.meta_base_url}/{c.ig_id}/insights", params=params)
+        
+        if insights_resp.status_code != 200:
+            # Fallback or error
+            raise HTTPException(status_code=insights_resp.status_code, detail=insights_resp.json())
+        
+        insights_data = insights_resp.json().get("data", [])
+        
+        # Process insights. If we requested a range, it returns multiple values per metric.
+        # We need to pivot this into daily snapshots.
+        daily_map = {} # date_str -> {metric: value}
+        
+        for m in insights_data:
+            m_name = m["name"]
+            for val_entry in m.get("values", []):
+                # end_time is like "2024-05-01T07:00:00+0000"
+                dt_str = val_entry["end_time"].split("T")[0]
+                if dt_str not in daily_map: daily_map[dt_str] = {}
+                daily_map[dt_str][m_name] = val_entry["value"]
 
-    snapshot = MetricSnapshot(
-        client_id=c.id,
-        snapshot_date=date.today(),
-        followers=profile.get("followers_count"),
-        follows=profile.get("follows_count"),
-        media_count=profile.get("media_count"),
-        reach=_extract_insight(insights, "reach"),
-        impressions=_extract_insight(insights, "impressions"),
-        profile_views=_extract_insight(insights, "profile_views"),
-        raw_json=json.dumps({"profile": profile, "insights": insights}, ensure_ascii=False),
-    )
-    db.add(snapshot)
+        # Save snapshots
+        for dt_str, vals in daily_map.items():
+            snapshot_date = date.fromisoformat(dt_str)
+            # Avoid duplicates
+            exists = db.query(MetricSnapshot).filter(
+                MetricSnapshot.client_id == c.id, 
+                MetricSnapshot.snapshot_date == snapshot_date
+            ).first()
+            
+            if exists:
+                exists.followers = profile.get("followers_count") # Use current followers as best guess
+                exists.reach = vals.get("reach", 0)
+                exists.impressions = vals.get("impressions", 0)
+                exists.profile_views = vals.get("profile_views", 0)
+                exists.website_clicks = vals.get("website_clicks", 0)
+            else:
+                db.add(MetricSnapshot(
+                    client_id=c.id,
+                    snapshot_date=snapshot_date,
+                    followers=profile.get("followers_count") if snapshot_date == date.today() else None,
+                    reach=vals.get("reach", 0),
+                    impressions=vals.get("impressions", 0),
+                    profile_views=vals.get("profile_views", 0),
+                    website_clicks=vals.get("website_clicks", 0),
+                    phone_call_clicks=vals.get("phone_call_clicks", 0),
+                    email_contacts=vals.get("email_contacts", 0),
+                    get_directions_clicks=vals.get("get_directions_clicks", 0)
+                ))
+    
     db.commit()
-    db.refresh(snapshot)
     
     # Run heavy archive collections in background
     background_tasks.add_task(run_heavy_collection, client_id, current, db)
+    log_audit(db, action="report.snapshot.collect.history", user=current, details={"client_id": c.id})
 
-    log_audit(db, action="report.snapshot.collect", user=current, details={"client_id": c.id, "snapshot_id": snapshot.id})
-
-    return {"ok": True, "snapshot_id": snapshot.id, "snapshot_date": str(snapshot.snapshot_date)}
+    return {"ok": True, "history_fetched": not has_history}
 
 async def run_heavy_collection(client_id: int, current: User, db: Session):
-    from app.routers.instagram import collect_active_stories, collect_audience_archive, collect_media_archive
+    from app.routers.instagram import collect_audience_archive, collect_media_archive
     try:
         # We need a new session or be careful with the current one. 
         # But for background tasks in FastAPI with Depends(get_db), it's better to manage it.
-        await collect_active_stories(client_id, current, db)
+        # Stories collection not yet implemented or moved
         await collect_audience_archive(client_id, current, db)
         await collect_media_archive(client_id, current, db)
     except Exception as e:
@@ -113,15 +160,26 @@ async def run_heavy_collection(client_id: int, current: User, db: Session):
 
 
 @router.get("/snapshots")
-def list_snapshots(client_id: int, days: int = 30, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_snapshots(
+    client_id: int, 
+    days: Optional[int] = None, 
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     c = _check_client_access(db, client_id, current)
-    since = date.today() - timedelta(days=max(days, 1))
-    rows = (
-        db.query(MetricSnapshot)
-        .filter(MetricSnapshot.client_id == c.id, MetricSnapshot.snapshot_date >= since)
-        .order_by(MetricSnapshot.snapshot_date.asc())
-        .all()
-    )
+    
+    query = db.query(MetricSnapshot).filter(MetricSnapshot.client_id == c.id)
+    
+    if start_date and end_date:
+        query = query.filter(MetricSnapshot.snapshot_date >= start_date, MetricSnapshot.snapshot_date <= end_date)
+    else:
+        d = days or 30
+        since = date.today() - timedelta(days=max(d, 1))
+        query = query.filter(MetricSnapshot.snapshot_date >= since)
+        
+    rows = query.order_by(MetricSnapshot.snapshot_date.asc()).all()
 
     return [
         {
@@ -132,25 +190,43 @@ def list_snapshots(client_id: int, days: int = 30, current: User = Depends(get_c
             "reach": r.reach,
             "impressions": r.impressions,
             "profile_views": r.profile_views,
+            "website_clicks": r.website_clicks,
+            "phone_call_clicks": r.phone_call_clicks,
+            "email_contacts": r.email_contacts,
+            "get_directions_clicks": r.get_directions_clicks,
+            "text_message_clicks": r.text_message_clicks,
         }
         for r in rows
     ]
 
 
 @router.get("/summary")
-def report_summary(client_id: int, days: int = 30, current: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from datetime import date, timedelta
-    
-    # Query double the days to get previous period
-    all_rows = list_snapshots(client_id=client_id, days=days * 2, current=current, db=db)
-    
-    cutoff = date.today() - timedelta(days=days)
-    
-    current_rows = [r for r in all_rows if date.fromisoformat(r["date"]) > cutoff]
-    previous_rows = [r for r in all_rows if date.fromisoformat(r["date"]) <= cutoff]
-    
+def report_summary(
+    client_id: int, 
+    days: Optional[int] = None, 
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    if start_date and end_date:
+        period_days = (end_date - start_date).days + 1
+        prev_end = start_date - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=period_days - 1)
+        
+        current_rows = list_snapshots(client_id, start_date=start_date, end_date=end_date, current=current, db=db)
+        previous_rows = list_snapshots(client_id, start_date=prev_start, end_date=prev_end, current=current, db=db)
+    else:
+        d = days or 30
+        current_rows = list_snapshots(client_id, days=d, current=current, db=db)
+        previous_rows = list_snapshots(client_id, days=d*2, current=current, db=db)
+        # Filter previous_rows to exclude the current period
+        cutoff = date.today() - timedelta(days=d)
+        previous_rows = [r for r in previous_rows if date.fromisoformat(r["date"]) <= cutoff]
+        period_days = d
+
     if not current_rows:
-        return {"period_days": days, "total_snapshots": 0, "latest": None, "deltas": {}, "totals": {}}
+        return {"period_days": period_days, "total_snapshots": 0, "latest": None, "deltas": {}, "totals": {}}
 
     latest = current_rows[-1]
     last_previous = previous_rows[-1] if previous_rows else current_rows[0]
@@ -168,6 +244,21 @@ def report_summary(client_id: int, days: int = 30, current: User = Depends(get_c
     curr_views = sum_metric(current_rows, "profile_views")
     prev_views = sum_metric(previous_rows, "profile_views")
 
+    curr_web = sum_metric(current_rows, "website_clicks")
+    prev_web = sum_metric(previous_rows, "website_clicks")
+
+    curr_phone = sum_metric(current_rows, "phone_call_clicks")
+    prev_phone = sum_metric(previous_rows, "phone_call_clicks")
+
+    curr_email = sum_metric(current_rows, "email_contacts")
+    prev_email = sum_metric(previous_rows, "email_contacts")
+
+    curr_dir = sum_metric(current_rows, "get_directions_clicks")
+    prev_dir = sum_metric(previous_rows, "get_directions_clicks")
+
+    curr_text = sum_metric(current_rows, "text_message_clicks")
+    prev_text = sum_metric(previous_rows, "text_message_clicks")
+
     def calc_pct(curr, prev):
         if prev == 0: return 0
         return round(((curr - prev) / prev) * 100, 2)
@@ -176,7 +267,12 @@ def report_summary(client_id: int, days: int = 30, current: User = Depends(get_c
         "followers": calc_pct(latest.get("followers") or 0, last_previous.get("followers") or 0),
         "reach": calc_pct(curr_reach, prev_reach),
         "impressions": calc_pct(curr_imp, prev_imp),
-        "profile_views": calc_pct(curr_views, prev_views)
+        "profile_views": calc_pct(curr_views, prev_views),
+        "website_clicks": calc_pct(curr_web, prev_web),
+        "phone_call_clicks": calc_pct(curr_phone, prev_phone),
+        "email_contacts": calc_pct(curr_email, prev_email),
+        "get_directions_clicks": calc_pct(curr_dir, prev_dir),
+        "text_message_clicks": calc_pct(curr_text, prev_text)
     }
     
     totals = {
@@ -185,7 +281,17 @@ def report_summary(client_id: int, days: int = 30, current: User = Depends(get_c
         "profile_views": curr_views,
         "prev_reach": prev_reach,
         "prev_impressions": prev_imp,
-        "prev_profile_views": prev_views
+        "prev_profile_views": prev_views,
+        "website_clicks": curr_web,
+        "phone_call_clicks": curr_phone,
+        "email_contacts": curr_email,
+        "get_directions_clicks": curr_dir,
+        "text_message_clicks": curr_text,
+        "prev_website_clicks": prev_web,
+        "prev_phone_call_clicks": prev_phone,
+        "prev_email_contacts": prev_email,
+        "prev_get_directions_clicks": prev_dir,
+        "prev_text_message_clicks": prev_text,
     }
 
     return {
@@ -242,3 +348,62 @@ def export_pdf(client_id: int, days: int = 30, current: User = Depends(get_curre
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=client_{client_id}_report.pdf"},
     )
+
+class SaveReportHistory(BaseModel):
+    client_id: int
+    report_type: str
+    period_days: int
+    objective: str | None = None
+    ad_account_id: str | None = None
+    campaign_ids: list[str] | None = None
+
+@router.post("/history")
+def save_report_history(
+    data: SaveReportHistory,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    _check_client_access(db, data.client_id, current)
+    
+    history = ReportHistory(
+        client_id=data.client_id,
+        user_id=current.id,
+        report_type=data.report_type,
+        period_days=data.period_days,
+        objective=data.objective,
+        ad_account_id=data.ad_account_id,
+        campaign_ids=json.dumps(data.campaign_ids) if data.campaign_ids else None
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(history)
+    return {"ok": True, "id": history.id}
+
+@router.get("/history")
+def list_report_history(
+    client_id: int,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    _check_client_access(db, client_id, current)
+    
+    rows = (
+        db.query(ReportHistory)
+        .filter(ReportHistory.client_id == client_id)
+        .order_by(ReportHistory.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    
+    return [
+        {
+            "id": r.id,
+            "report_type": r.report_type,
+            "period_days": r.period_days,
+            "objective": r.objective,
+            "ad_account_id": r.ad_account_id,
+            "campaign_ids": json.loads(r.campaign_ids) if r.campaign_ids else [],
+            "created_at": r.created_at.isoformat()
+        }
+        for r in rows
+    ]

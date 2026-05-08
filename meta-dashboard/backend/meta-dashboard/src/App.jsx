@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText } from "lucide-react"
+import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts"
 
 const API = "http://127.0.0.1:8001"
@@ -179,7 +179,11 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
   return (
     <div style={{position:"relative",marginBottom:"16px"}}>
       <button onClick={() => setOpen(!open)} className="client-switcher-btn">
-        <div style={{width:"26px",height:"26px",borderRadius:"7px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+        {current?.profile_picture_url ? (
+          <img src={current.profile_picture_url} style={{width:"26px",height:"26px",borderRadius:"7px",flexShrink:0,objectFit:"cover"}} />
+        ) : (
+          <div style={{width:"26px",height:"26px",borderRadius:"7px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+        )}
         <span style={{flex:1,textAlign:"left",fontSize:"13px",fontWeight:"600",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {current?.name ?? "Selecionar cliente"}
         </span>
@@ -191,7 +195,11 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
           {clients.map(c => (
             <button key={c.id} onClick={() => { onSelect(c.id); setOpen(false) }}
               style={{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"9px 12px",background:"transparent",border:"none",cursor:"pointer",color: selected===c.id ? "var(--accent-light)" : "var(--text-secondary)",fontSize:"13px",fontFamily:"inherit"}}>
-              <div style={{width:"22px",height:"22px",borderRadius:"6px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+              {c.profile_picture_url ? (
+                <img src={c.profile_picture_url} style={{width:"22px",height:"22px",borderRadius:"6px",flexShrink:0,objectFit:"cover"}} />
+              ) : (
+                <div style={{width:"22px",height:"22px",borderRadius:"6px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+              )}
               <span style={{flex:1,textAlign:"left"}}>{c.name}</span>
               {selected === c.id && <Check size={13} color="var(--accent-light)"/>}
             </button>
@@ -254,9 +262,8 @@ function AddClientModal({ onClose, authFetch, onToast }) {
         </div>
 
         <p style={{color:"var(--text-700)",fontSize:"12px",lineHeight:1.45,marginBottom:"16px"}}>
-          O fluxo OAuth evita colar manualmente Page ID, Instagram ID e Access Token.
+          Se preferir conectar usando um token de acesso de longa duração manual, utilize o formulário avançado em configurações.
         </p>
-
         <button onClick={onClose} style={{width:"100%",padding:"12px",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"var(--text-500)",cursor:"pointer",fontSize:"14px"}}>
           Fechar
         </button>
@@ -265,549 +272,626 @@ function AddClientModal({ onClose, authFetch, onToast }) {
   )
 }
 
-const OrganicReport = ({ client, profile, summary, media, stories, audience, snapshots, reportConfig }) => {
-  const currentMonth = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-  
-  // Totals
-  const followers = profile?.followers_count || 0;
-  const reach = summary?.reach || summary?.totals?.reach || 0;
-  const impressions = summary?.impressions || summary?.totals?.impressions || 0;
-  const profileViews = summary?.profile_views || summary?.totals?.profile_views || 0;
-  
-  // Post aggregations
-  let totalLikes = 0, totalComments = 0, totalSaves = 0, totalShares = 0;
-  const formatStats = { REELS: { reach:0, inters:0, count:0 }, CAROUSEL: { reach:0, inters:0, count:0 }, IMAGE: { reach:0, inters:0, count:0 } };
-  
-  if (Array.isArray(media)) {
-    media.forEach(m => {
-      totalLikes += m.like_count || 0;
-      totalComments += m.comments_count || 0;
-      totalSaves += m.insights?.saved || 0;
-      totalShares += m.insights?.shares || 0;
-      
-      const type = m.media_type === 'VIDEO' ? 'REELS' : m.media_type === 'CAROUSEL_ALBUM' ? 'CAROUSEL' : 'IMAGE';
-      if (formatStats[type]) {
-        formatStats[type].count++;
-        formatStats[type].reach += m.insights?.reach || 0;
-        formatStats[type].inters += (m.like_count||0) + (m.comments_count||0) + (m.insights?.saved||0) + (m.insights?.shares||0);
-      }
-    });
-  }
-  
-  const totalInters = totalLikes + totalComments + totalSaves + totalShares;
-  const engRate = reach > 0 ? (totalInters / reach * 100).toFixed(1) : "0,0";
-
-  // Stories
-  let storyViews = 0, storyReach = 0;
-  if (Array.isArray(stories)) {
-    stories.forEach(s => { storyViews += s.impressions || 0; storyReach += s.reach || 0; });
-  }
-  const avgStoryReach = (Array.isArray(stories) && stories.length > 0) ? (storyReach / stories.length).toFixed(0) : 0;
-
-  // Top Posts
-  const topPosts = Array.isArray(media) ? [...media].sort((a,b) => (b.insights?.reach || 0) - (a.insights?.reach || 0)).slice(0, 3) : [];
-
-  // Audience processing (Meta API Format)
-  let ageData = [];
-  let genderData = [];
-  let cityData = [];
-
-  if (Array.isArray(audience)) {
-    const ageGender = audience.find(m => m.name === 'audience_gender_age');
-    if (ageGender && ageGender.values?.[0]?.value) {
-      const vals = ageGender.values[0].value;
-      const ages = {};
-      const genders = { Feminino: 0, Masculino: 0 };
-      
-      Object.entries(vals).forEach(([key, val]) => {
-        const [g, age] = key.split('.');
-        if (age) ages[age] = (ages[age] || 0) + val;
-        if (g === 'F') genders.Feminino += val;
-        else if (g === 'M') genders.Masculino += val;
-      });
-      
-      ageData = Object.entries(ages).map(([dimension, value]) => ({ dimension, value })).sort((a,b) => b.value - a.value).slice(0, 5);
-      genderData = Object.entries(genders).map(([dimension, value]) => ({ dimension, value }));
-    }
-
-    const citiesMetric = audience.find(m => m.name === 'audience_city');
-    if (citiesMetric && citiesMetric.values?.[0]?.value) {
-      cityData = Object.entries(citiesMetric.values[0].value)
-        .sort((a,b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([city, value]) => ({ dimension: city.split(',')[0], value }));
-    }
-  }
-
-  const totalAudience = ageData.reduce((acc, curr) => acc + curr.value, 0) || 1;
-
+function ReportMetricCard({ title, value, trend, prevValue, info }) {
+  const isPositive = trend >= 0;
   return (
-    <div className="organic-report-page">
-      <div className="page">
-        <div className="pg-header">
-          <div>
-            <div className="h-label">Relatório de Instagram</div>
-            <div className="h-client">{client?.name || "Cliente"}</div>
-            <div className="h-sub">@{profile?.username} · {profile?.category || "Negócio"} · {cityData[0]?.city || "Brasil"}</div>
+    <div className="report-mcard">
+      <div className="report-mcard-header">
+        <span className="report-mcard-title">{title}</span>
+        {info && <span className="report-mcard-info-icon" title={info}>?</span>}
+      </div>
+      <div className="report-mcard-body">
+        <div className="report-mcard-value">{value}</div>
+        {trend !== undefined && (
+          <div className={`report-mcard-trend ${isPositive ? 'up' : 'down'}`}>
+            {isPositive ? '▲' : '▼'} {Math.abs(trend)}%
           </div>
-          <div className="h-right">
-            <div className="h-period">{currentMonth}</div>
-            <div className="h-badge">Relatório Orgânico</div>
-          </div>
-        </div>
-
-        <div className="body">
-          <div className="section">
-            <div className="slabel">Visão geral da conta <span className="api-tag">insights · account</span></div>
-            <div className="m4">
-              <div className="mcard">
-                <div className="lbl">Seguidores</div>
-                <div className="val">{followers.toLocaleString("pt-BR")}</div>
-                <div className="delta neu">— total da conta</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Alcance total</div>
-                <div className="val">{reach.toLocaleString("pt-BR")}</div>
-                <div className="delta up">↑ alcance orgânico</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Impressões</div>
-                <div className="val">{impressions.toLocaleString("pt-BR")}</div>
-                <div className="delta neu">— visualizações</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Visitas ao perfil</div>
-                <div className="val">{profileViews.toLocaleString("pt-BR")}</div>
-                <div className="delta up">↑ interesse na marca</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="slabel">Engajamento <span className="api-tag">insights · engagement</span></div>
-            <div className="m4">
-              <div className="mcard">
-                <div className="lbl">Taxa de engajamento</div>
-                <div className="val">{engRate}%</div>
-                <div className="delta neu">benchmark: 3–5%</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Curtidas</div>
-                <div className="val">{totalLikes.toLocaleString("pt-BR")}</div>
-                <div className="delta up">↑ interações diretas</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Comentários</div>
-                <div className="val">{totalComments.toLocaleString("pt-BR")}</div>
-                <div className="delta up">↑ conversas</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Salvamentos</div>
-                <div className="val">{totalSaves.toLocaleString("pt-BR")}</div>
-                <div className="delta up">↑ conteúdo de valor</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="section two-col">
-            <div className="card">
-              <div className="card-title">Ações no perfil <span className="api-tag">profile_actions</span></div>
-              <div className="row"><span className="rk">Cliques no link da bio</span><span className="rv">{profile?.website_clicks || 0}</span></div>
-              <div className="row"><span className="rk">Cliques em "Ligar"</span><span className="rv">{profile?.call_clicks || 0}</span></div>
-              <div className="row"><span className="rk">Cliques em "E-mail"</span><span className="rv">{profile?.email_clicks || 0}</span></div>
-              <div className="row"><span className="rk">Compartilhamentos</span><span className="rv">{totalShares.toLocaleString("pt-BR")}</span></div>
-            </div>
-            <div className="card">
-              <div className="card-title">Desempenho por formato <span className="api-tag">media_type</span></div>
-              {Object.entries(formatStats).sort((a,b) => b[1].inters - a[1].inters).map(([type, stats]) => {
-                const rate = stats.reach > 0 ? (stats.inters / stats.reach * 100).toFixed(1) : 0;
-                const colors = { REELS: 'fill-pink', CAROUSEL: 'fill-purple', IMAGE: 'fill-blue' };
-                return (
-                  <div className="bar-item" key={type}>
-                    <div className="bar-lr"><span>{type}</span><strong>{rate}% eng.</strong></div>
-                    <div className="track"><div className={colors[type]} style={{width:`${Math.min(rate * 10, 100)}%`}}></div></div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="slabel">Top publicações do mês <span className="api-tag">media · insights</span></div>
-            <div className="card" style={{flex: 'none'}}>
-              {topPosts.map(post => (
-                <div className="post-row" key={post.id}>
-                  <div className="post-thumb">{post.media_type === 'VIDEO' ? '▶' : '■'}</div>
-                  <div className="post-info">
-                    <div className="post-desc">{post.caption || "Sem legenda"}</div>
-                    <div className="post-type">
-                      <span className={`pill pill-${post.media_type === 'VIDEO' ? 'reels' : post.media_type === 'CAROUSEL_ALBUM' ? 'carrou' : 'feed'}`}>
-                        {post.media_type.replace('_ALBUM', '')}
-                      </span> &middot; {new Date(post.timestamp).toLocaleDateString('pt-BR', {day:'numeric', month:'short'})}
-                    </div>
-                  </div>
-                  <div className="post-stats">
-                    <div className="pstat"><div className="pv">{post.insights?.reach?.toLocaleString("pt-BR")}</div><div className="pk">alcance</div></div>
-                    <div className="pstat"><div className="pv">{(post.insights?.engagement || 0).toLocaleString("pt-BR")}</div><div className="pk">inters.</div></div>
-                    <div className="pstat"><div className="pv">{post.insights?.saved || 0}</div><div className="pk">salvos</div></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="slabel">Stories <span className="api-tag">stories · insights</span></div>
-            <div className="m3">
-              <div className="mcard">
-                <div className="lbl">Stories publicados</div>
-                <div className="val">{stories.length}</div>
-                <div className="delta neu">{(stories.length / 4).toFixed(0)} por semana</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Alcance médio por story</div>
-                <div className="val">{avgStoryReach}</div>
-                <div className="delta up">↑ visualizações únicas</div>
-              </div>
-              <div className="mcard">
-                <div className="lbl">Retenção média</div>
-                <div className="val">72%</div>
-                <div className="delta neu">— engajamento</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="section two-col">
-            <div className="card">
-              <div className="card-title">Audiência <span className="api-tag">audience_demographics</span></div>
-              <div className="dem-grid">
-                <div className="dem-item">
-                  <div className="dem-label">Faixa etária</div>
-                  {ageData.slice(0, 4).map(a => (
-                    <div className="age-row" key={a.dimension}>
-                      <span className="age-key">{a.dimension}</span>
-                      <div className="age-bar"><div className="age-fill" style={{width:`${(a.value/totalAudience*100)}%`}}></div></div>
-                      <span className="age-val">{(a.value/totalAudience*100).toFixed(0)}%</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="dem-item">
-                  <div className="dem-label">Gênero</div>
-                  {genderData.map(g => (
-                    <div className="age-row" key={g.dimension}>
-                      <span className="age-key">{g.dimension}</span>
-                      <div className="age-bar"><div className="age-fill" style={{width:`${(g.value/totalAudience*100)}%`}}></div></div>
-                      <span className="age-val">{(g.value/totalAudience*100).toFixed(0)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="dem-divider"></div>
-              <div className="dem-label">Cidades com maior alcance</div>
-              {cityData.map(c => (
-                <div className="row" key={c.dimension}><span className="rk">{c.dimension}</span><span className="rv">{(c.value/totalAudience*100).toFixed(0)}%</span></div>
-              ))}
-            </div>
-            <div className="card">
-              <div className="card-title">Melhores horários <span className="api-tag">online_followers</span></div>
-              <div className="bar-item">
-                <div className="bar-lr"><span>Seg–Sex · 11h–13h</span><strong>pico alto</strong></div>
-                <div className="track"><div className="fill-pink" style={{width:'88%'}}></div></div>
-              </div>
-              <div className="bar-item">
-                <div className="bar-lr"><span>Seg–Sex · 18h–21h</span><strong>pico alto</strong></div>
-                <div className="track"><div className="fill-pink" style={{width:'82%'}}></div></div>
-              </div>
-              <div className="bar-item">
-                <div className="bar-lr"><span>Sábado · 09h–12h</span><strong>pico médio</strong></div>
-                <div className="track"><div className="fill-purple" style={{width:'55%'}}></div></div>
-              </div>
-              <div className="dem-divider"></div>
-              <div className="dem-label">Destaques do período</div>
-              <div className="row"><span className="rk">Alcance total</span><span className="rv">{reach.toLocaleString("pt-BR")}</span></div>
-              <div className="row"><span className="rk">Novos seguidores</span><span className="rv">{followers > snapshots[0]?.followers ? followers - snapshots[0]?.followers : 0}</span></div>
-            </div>
-          </div>
-
-          <div className="section">
-            <div className="slabel">Observações e próximos passos</div>
-            <div className="insight-box">
-              <div className="ititle">Análise do período</div>
-              <ul className="insight-list">
-                <li><span className="arr">→</span> {formatStats.REELS.count > 0 ? `Reels têm ${(formatStats.REELS.inters/formatStats.REELS.reach*100).toFixed(1)}% de engajamento — manter a frequência.` : "Começar a produzir Reels para aumentar o alcance."}</li>
-                <li><span className="arr">→</span> O conteúdo gerou {totalInters} interações totais, um CTR de {engRate}% sobre o alcance.</li>
-                <li><span className="arr">→</span> {cityData[0]?.dimension || "Sua cidade"} representa a maior fatia da audiência local.</li>
-                <li><span className="arr">→</span> {profile?.website_clicks || 0} cliques no link da bio indicam boa conversão de tráfego.</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="pg-footer">
-            <span className="fl">Relatório gerado via UP REPORTS · {currentMonth}</span>
-            <span className="fr">Dados via Instagram Graph API</span>
-          </div>
-        </div>
+        )}
+      </div>
+      <div className="report-mcard-footer">
+        <span className="report-mcard-prev">{prevValue}</span> no período anterior
       </div>
     </div>
-  )
+  );
 }
 
-const PaidTrafficReport = ({ client, ads, creatives, reportConfig }) => {
+const OrganicReport = ({ client, profile, summary, media, stories, audience, snapshots, reportConfig }) => {
+  const currentMonth = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const followers = profile?.followers_count || 0;
+  const reach = summary?.totals?.reach || 0;
+  const impressions = summary?.totals?.impressions || 0;
+  const profileViews = summary?.totals?.profile_views || 0;
+  const deltaFollowers = summary?.delta_followers || 0;
+  
+  const totalClicks = (summary?.totals?.website_clicks || 0) +  
+                     (summary?.totals?.phone_call_clicks || 0) + 
+                     (summary?.totals?.email_contacts || 0) + 
+                     (summary?.totals?.get_directions_clicks || 0);
+
+  const prevTotalClicks = (summary?.totals?.prev_website_clicks || 0) + 
+                         (summary?.totals?.prev_phone_call_clicks || 0) + 
+                         (summary?.totals?.prev_email_contacts || 0) + 
+                         (summary?.totals?.prev_get_directions_clicks || 0);
+  
+  const clicksDelta = prevTotalClicks > 0 ? (((totalClicks - prevTotalClicks) / prevTotalClicks) * 100).toFixed(1) : 0;
+
+  let genderAgeData = [];
+  let genderData = [{name: 'Masculino', value: 0}, {name: 'Feminino', value: 0}];
+  let topCities = [];
+  
+  if (Array.isArray(audience)) {
+    const ageGender = audience.find(m => m.name === 'audience_gender_age');
+    if (ageGender?.values?.[0]) {
+      const vals = ageGender.values[0].value;
+      const ages = ['18-24', '25-34', '35-44', '45-54'];
+      genderAgeData = ages.map(age => ({
+        age,
+        Feminino: vals[`F.${age}`] || 0,
+        Masculino: vals[`M.${age}`] || 0,
+      }));
+      
+      let f = 0, m = 0;
+      Object.entries(vals).forEach(([k, v]) => {
+        if (k.startsWith('F.')) f += v;
+        else if (k.startsWith('M.')) m += v;
+      });
+      genderData = [{name: 'Masculino', value: m}, {name: 'Feminino', value: f}];
+    }
+    
+    const cityData = audience.find(m => m.name === 'audience_city');
+    if (cityData?.values?.[0]) {
+      topCities = Object.entries(cityData.values[0].value)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([city, count]) => ({ city: city.split(',')[0], count }));
+    }
+  }
+
+  const chartData = snapshots?.map(s => ({
+    date: s.date ? s.date.split('-').reverse().slice(0,2).join('/') : '',
+    seguidores: s.followers || 0,
+    alcance: s.reach || 0,
+    impressoes: s.impressions || 0
+  })) || [];
+
+  return (
+    <div className="modern-report-container">
+      <style>{`
+        .modern-report-container {
+          --bg: #f8fafc;
+          --card: #ffffff;
+          --ink: #0f172a;
+          --ink-soft: #475569;
+          --ink-muted: #94a3b8;
+          --line: #e2e8f0;
+          --primary: #4f46e5;
+          --primary-2: #6366f1;
+          --primary-soft: #f5f3ff;
+          --accent: #ec4899;
+          --green: #10b981;
+          --radius: 16px;
+          --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+          font-family: var(--font-display);
+          background: var(--bg);
+          color: var(--ink);
+          min-height: 100vh;
+          width: 100%;
+          padding-bottom: 64px;
+        }
+
+        .hero {
+          position: relative;
+          background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+          color: #fff; padding: 48px; overflow: hidden;
+        }
+        .hero-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+        .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; }
+        .brand-mark { width: 32px; height: 32px; border-radius: 8px; background: #fff; color: var(--primary); display: grid; place-items: center; font-weight: 800; }
+        .period-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(255,255,255,0.1); border-radius: 999px; font-size: 12px; }
+        .hero-title { margin-top: 32px; font-size: 38px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+        .hero-title em { font-style: normal; color: #f472b6; }
+        .hero-stats { margin-top: 28px; display: flex; gap: 40px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.12); }
+        .hero-stat-label { font-size: 11px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+        .hero-stat-value { font-size: 16px; font-weight: 700; }
+
+        .report-main { max-width: 1200px; margin: -48px auto 0; padding: 0 24px; position: relative; z-index: 2; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05); }
+        .kpi-label { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+        .kpi-value { font-size: 26px; font-weight: 800; color: var(--ink); }
+        .kpi-foot { margin-top: 10px; font-size: 11px; color: var(--ink-soft); display: flex; align-items: center; gap: 4px; }
+        
+        .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+        .panel-head { margin-bottom: 24px; }
+        .panel-title { font-size: 17px; font-weight: 700; margin: 0; }
+        .panel-sub { font-size: 12px; color: var(--ink-muted); margin-top: 4px; }
+
+        .report-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+        .report-table { width: 100%; border-collapse: collapse; }
+        .report-table th { text-align: left; padding: 12px; background: #f8fafc; color: var(--ink-muted); font-size: 11px; text-transform: uppercase; }
+        .report-table td { padding: 14px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+
+        @media (max-width: 900px) {
+          .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+          .report-grid-2 { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
+      <header className="hero">
+        <div className="hero-top">
+          <div className="brand">
+            <div className="brand-mark">U</div>
+            <span>UP REPORTS · Instagram Organic</span>
+          </div>
+          <div className="period-badge">{currentMonth} · Últimos 30 dias</div>
+        </div>
+        <h1 className="hero-title">Análise de <em>Crescimento</em><br/>Performance Orgânica</h1>
+        <div className="hero-stats">
+          <div><div className="hero-stat-label">Seguidores</div><div className="hero-stat-value">{followers.toLocaleString("pt-BR")}</div></div>
+          <div><div className="hero-stat-label">Alcance</div><div className="hero-stat-value">{reach.toLocaleString("pt-BR")}</div></div>
+          <div><div className="hero-stat-label">Engajamento</div><div className="hero-stat-value">{impressions.toLocaleString("pt-BR")}</div></div>
+        </div>
+      </header>
+
+      <main className="report-main">
+        <div className="kpi-grid">
+          <div className="kpi">
+            <div className="kpi-label">Novos Seguidores</div>
+            <div className="kpi-value">{(deltaFollowers >= 0 ? "+" : "") + deltaFollowers.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Variação no período</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Alcance das Contas</div>
+            <div className="kpi-value">{reach.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Contas únicas atingidas</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Visitas ao Perfil</div>
+            <div className="kpi-value">{profileViews.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Visualizações totais</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Cliques Totais</div>
+            <div className="kpi-value">{totalClicks.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">{clicksDelta}% vs período anterior</div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <h3 className="panel-title">Crescimento de Seguidores</h3>
+            <p className="panel-sub">Evolução diária da base de fãs</p>
+          </div>
+          <div style={{height: "300px"}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorSeg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 11}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11}} />
+                <RechartsTooltip />
+                <Area type="monotone" dataKey="seguidores" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorSeg)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="report-grid-2">
+          <div className="panel">
+            <div className="panel-head">
+              <h3 className="panel-title">Distribuição por Gênero</h3>
+            </div>
+            <div style={{height: "260px"}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={genderData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} dataKey="value" label={({percent}) => `${(percent*100).toFixed(0)}%`}>
+                    <Cell fill="#6366f1" />
+                    <Cell fill="#ec4899" />
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend verticalAlign="bottom" height={36} formatter={(value, entry) => {
+                    const total = genderData.reduce((acc, d) => acc + d.value, 0);
+                    const percent = total > 0 ? (entry.payload.value / total * 100).toFixed(1) : 0;
+                    return `${value} (${percent}%)`;
+                  }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-head">
+              <h3 className="panel-title">Principais Cidades</h3>
+            </div>
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>Cidade</th>
+                  <th style={{textAlign: "right"}}>Seguidores</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topCities.map((c, i) => (
+                  <tr key={i}>
+                    <td>{c.city}</td>
+                    <td style={{textAlign: "right", fontWeight: "700"}}>{c.count.toLocaleString("pt-BR")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      <footer style={{textAlign: "center", padding: "32px", color: "var(--ink-muted)", fontSize: "12px"}}>
+        Relatório Orgânico · UP REPORTS · {currentMonth}
+      </footer>
+    </div>
+  );
+};
+
+const PaidTrafficReport = ({ client, ads, creatives }) => {
   const currentMonth = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const spend = parseFloat(ads?.spend || 0);
   const clicks = parseInt(ads?.clicks || 0);
   const reach = parseInt(ads?.reach || 0);
   const impressions = parseInt(ads?.impressions || 0);
-  const ctr = (parseFloat(ads?.ctr || 0)).toFixed(2);
+  const frequency = reach > 0 ? (impressions / reach).toFixed(2) : "0,00";
   
   const actions = ads?.actions || [];
-  const leads = actions.find(a => a.action_type === 'lead')?.value || 
-                actions.find(a => a.action_type === 'contact')?.value || 
-                actions.find(a => a.action_type === 'complete_registration')?.value || 
-                actions.find(a => a.action_type === 'onsite_conversion.messaging_first_reply')?.value || 0;
+  const visits = actions.reduce((sum, a) => {
+    const conversionTypes = ['lead', 'contact', 'complete_registration', 'onsite_conversion.messaging_first_reply', 'onsite_conversion.messaging_conversation_started_7d', 'submit_application', 'post_engagement'];
+    if (conversionTypes.includes(a.action_type)) return sum + parseInt(a.value || 0);
+    return sum;
+  }, 0);
   
-  const cpl = leads > 0 ? (spend / leads).toFixed(2) : "0,00";
+  const engagement = actions.reduce((sum, a) => sum + parseInt(a.value || 0), 0);
+  const followers = actions.find(a => a.action_type === 'follow' || a.action_type === 'page_like')?.value || 0;
+  const cpa = visits > 0 ? (spend / visits).toFixed(2) : "0,00";
 
-  const countAmplificar = creatives.filter(c => parseFloat(c.ctr) > 1.5).length;
-  const countAjustar = creatives.filter(c => parseFloat(c.ctr) >= 0.8 && parseFloat(c.ctr) <= 1.5).length;
-  const countPausar = creatives.filter(c => parseFloat(c.ctr) < 0.8).length;
+  const [activeMetric, setActiveMetric] = useState('visits');
+  const [sortField, setSortField] = useState('spend');
+
+  const getAdLeads = (cr) => (cr.actions || []).reduce((sum, act) => {
+    const type = act.action_type.toLowerCase();
+    if (type.includes('lead') || type.includes('contact') || type.includes('registration')) return sum + parseInt(act.value || 0);
+    return sum;
+  }, 0);
+
+  const getAdConversations = (cr) => (cr.actions || []).reduce((sum, act) => {
+    const type = act.action_type.toLowerCase();
+    if (type.includes('messaging')) return sum + parseInt(act.value || 0);
+    return sum;
+  }, 0);
+
+  const sortedCreatives = [...creatives].sort((a, b) => {
+    if (sortField === 'spend') return parseFloat(b.spend || 0) - parseFloat(a.spend || 0);
+    if (sortField === 'impressions') return parseInt(b.impressions || 0) - parseInt(a.impressions || 0);
+    if (sortField === 'leads') return getAdLeads(b) - getAdLeads(a);
+    if (sortField === 'conversations') return getAdConversations(b) - getAdConversations(a);
+    if (sortField === 'freq') {
+      const fA = parseInt(a.reach) > 0 ? (parseInt(a.impressions) / parseInt(a.reach)) : 0;
+      const fB = parseInt(b.reach) > 0 ? (parseInt(b.impressions) / parseInt(b.reach)) : 0;
+      return fB - fA;
+    }
+    return 0;
+  });
+
+  const chartData = creatives.slice(0, 5).map(c => {
+    const c_visits = getAdLeads(c) + getAdConversations(c);
+    return {
+      name: c.ad_name.split('_')[0],
+      fullName: c.ad_name,
+      visits: c_visits,
+      spend: parseFloat(c.spend || 0),
+      impressions: parseInt(c.impressions || 0),
+      engagement: (c.actions || []).reduce((sum, a) => sum + parseInt(a.value || 0), 0)
+    };
+  });
+
+  const COLORS = ['#2563eb', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'];
 
   return (
-    <div className="report-page">
-      <div className="page">
-        <div className="header">
-          <div className="header-left">
-            <div className="agency">UP REPORTS · Relatório de Tráfego Pago</div>
-            <div className="client-name">{client?.name || "Cliente"}</div>
-            <div className="client-sub">Segmento do negócio · Relatório gerado via UP REPORTS</div>
-          </div>
-          <div className="header-right">
-            <div className="period-label">Período</div>
-            <div className="period">{currentMonth}</div>
-            <div className="badge">Relatório Automático</div>
-          </div>
-        </div>
+    <div className="modern-report-container">
+      <style>{`
+        .modern-report-container {
+          --bg: #f5f7fb;
+          --card: #ffffff;
+          --ink: #0f172a;
+          --ink-soft: #475569;
+          --ink-muted: #94a3b8;
+          --line: #e2e8f0;
+          --primary: #1e3a8a;
+          --primary-2: #2563eb;
+          --primary-soft: #eff4ff;
+          --accent: #8b5cf6;
+          --green: #10b981;
+          --rose: #f43f5e;
+          --radius: 14px;
+          --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+          font-family: var(--font-display);
+          background: var(--bg);
+          color: var(--ink);
+          min-height: 100vh;
+          width: 100%;
+          padding-bottom: 64px;
+        }
 
-        <div className="section-label">Visão geral do mês</div>
-        <div className="metrics-grid">
-          <div className="metric-card">
-            <div className="metric-label">Investimento total</div>
-            <div className="metric-value">R$ {spend.toLocaleString("pt-BR", {minimumFractionDigits: 2})}</div>
-            <div className="metric-delta delta-neutral">— dentro do planejado</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Cliques totais</div>
-            <div className="metric-value">{clicks.toLocaleString("pt-BR")}</div>
-            <div className="metric-delta delta-neutral">— cliques únicos</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Conversões</div>
-            <div className="metric-value">{leads}</div>
-            <div className="metric-delta delta-neutral">— contatos novos</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Custo por lead</div>
-            <div className="metric-value">R$ {cpl}</div>
-            <div className="metric-delta delta-neutral">— custo médio</div>
-          </div>
-        </div>
+        .hero {
+          position: relative;
+          background: linear-gradient(135deg, #0f1e4d 0%, #1e3a8a 50%, #312e81 100%);
+          color: #fff; padding: 40px 48px 80px; overflow: hidden;
+        }
+        .hero-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+        .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; }
+        .brand-mark { width: 32px; height: 32px; border-radius: 8px; background: #fff; color: var(--primary); display: grid; place-items: center; font-weight: 800; }
+        .period-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(255,255,255,0.1); border-radius: 999px; font-size: 12px; }
+        .hero-title { margin-top: 32px; font-size: 38px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+        .hero-title em { font-style: normal; color: #fbbf24; }
+        .hero-stats { margin-top: 28px; display: flex; gap: 40px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.12); }
+        .hero-stat-label { font-size: 11px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+        .hero-stat-value { font-size: 16px; font-weight: 700; }
 
-        <div className="section-label">Desempenho por canal</div>
-        <div className="channels-grid">
-          <div className="channel-card">
-            <div className="channel-header">
-              <span className="channel-name">Meta Ads</span>
-              <span className="ch-badge badge-meta">Feed + Stories + Reels</span>
-            </div>
-            <div className="ch-rows">
-              <div className="ch-row"><span className="rk">Alcance</span><span className="rv">{reach.toLocaleString("pt-BR")} pessoas</span></div>
-              <div className="ch-row"><span className="rk">Cliques no link</span><span className="rv">{clicks.toLocaleString("pt-BR")}</span></div>
-              <div className="ch-row"><span className="rk">CTR</span><span className="rv">{ctr}%</span></div>
-              <div className="ch-row"><span className="rk">Investimento</span><span className="rv">R$ {spend.toLocaleString("pt-BR", {minimumFractionDigits: 2})}</span></div>
-              <div className="ch-row"><span className="rk">Conversões</span><span className="rv">{leads} contatos</span></div>
-              <div className="ch-row"><span className="rk">CPL</span><span className="rv">R$ {cpl}</span></div>
-            </div>
-          </div>
-          <div className="channel-card" style={{opacity: 0.4}}>
-            <div className="channel-header">
-              <span className="channel-name">Google Ads</span>
-              <span className="ch-badge badge-google">Pesquisa + Maps</span>
-            </div>
-            <div className="ch-rows">
-              <div className="ch-row"><span className="rk">Impressões</span><span className="rv">0</span></div>
-              <div className="ch-row"><span className="rk">Cliques</span><span className="rv">0</span></div>
-              <div className="ch-row"><span className="rk">CTR</span><span className="rv">0,0%</span></div>
-              <div className="ch-row"><span className="rk">Investimento</span><span className="rv">R$ 0,00</span></div>
-              <div className="ch-row"><span className="rk">Conversões</span><span className="rv">0 contatos</span></div>
-              <div className="ch-row"><span className="rk">CPL</span><span className="rv">R$ 0,00</span></div>
-            </div>
-          </div>
-        </div>
+        .report-main { max-width: 1200px; margin: -56px auto 0; padding: 0 24px; position: relative; z-index: 2; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+        .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .kpi-label { font-size: 11px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+        .kpi-value { font-size: 24px; font-weight: 800; color: var(--ink); }
+        .kpi-foot { margin-top: 10px; font-size: 11px; color: var(--ink-soft); display: flex; align-items: center; gap: 4px; }
 
-        <div className="section-label">Distribuição de ações</div>
-        <div className="bars-section">
-          {actions.length === 0 ? (
-             <p style={{fontSize:"9px", color:"#999", textAlign:"center", padding:"20px"}}>Nenhuma ação de conversão registrada no período.</p>
-          ) : actions.slice(0, 4).sort((a,b)=>b.value-a.value).map((action, idx) => {
-            const pct = (action.value / leads * 100) || 0;
-            const colors = ["fill-navy", "fill-gold", "fill-navy2", "fill-gold2"];
-            return (
-              <div className="bar-item" key={action.action_type}>
-                <div className="bar-label-row">
-                  <span className="bar-lbl">{action.action_type.replace(/_/g, ' ')}</span>
-                  <span className="bar-val">{action.value} ações</span>
-                </div>
-                <div className="bar-track"><div className={`bar-fill ${colors[idx % 4]}`} style={{width:`${pct}%`}}></div></div>
+        .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+        .panel-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .panel-title { font-size: 16px; font-weight: 700; margin: 0; }
+        .panel-sub { font-size: 12px; color: var(--ink-muted); }
+        
+        .toggle-group { display: flex; background: #f1f5f9; padding: 4px; border-radius: 8px; gap: 4px; }
+        .toggle-group button { border: none; background: transparent; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--ink-soft); }
+        .toggle-group button.active { background: #fff; color: var(--primary-2); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+        .report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .report-table th { text-align: left; padding: 12px; background: #f8fafc; color: var(--ink-muted); font-size: 11px; text-transform: uppercase; }
+        .report-table td { padding: 14px 12px; border-bottom: 1px solid #f1f5f9; }
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; background: #ecfdf5; color: #047857; }
+        
+        .report-grid-2 {
+          display: grid;
+          grid-template-columns: 1.5fr 1fr;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .insights-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .insight-card { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--primary-2); border-radius: 10px; padding: 16px; }
+        .insight-card.good { border-left-color: var(--green); }
+        .insight-card.warn { border-left-color: #f59e0b; }
+
+        @media (max-width: 992px) {
+          .report-grid-2 { grid-template-columns: 1fr; }
+          .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+          .hero-stats { gap: 20px; }
+          .hero-title { font-size: 32px; }
+        }
+
+        @media (max-width: 768px) {
+          .hero { padding: 30px 24px 60px; }
+          .hero-stats { display: grid; grid-template-columns: 1fr 1fr; }
+          .kpi-grid { grid-template-columns: 1fr; }
+          .insights-grid { grid-template-columns: 1fr; }
+          .panel { overflow-x: auto; }
+          .panel-head { flex-direction: column; gap: 12px; }
+        }
+      `}</style>
+
+      <header className="hero">
+        <div className="hero-top">
+          <div className="brand">
+            <div className="brand-mark">U</div>
+            <span>UP REPORTS · Performance Ads</span>
+          </div>
+          <div className="period-badge">{currentMonth} · Últimos 30 dias</div>
+        </div>
+        <h1 className="hero-title">Relatório de <em>Desempenho</em><br/>Tráfego Pago · Meta Ads</h1>
+        <p style={{marginTop: "12px", color: "rgba(255,255,255,0.7)", fontSize: "15px"}}>
+          Análise consolidada de performance para <strong>{client?.name || "Cliente"}</strong>.
+        </p>
+        <div className="hero-stats">
+          <div><div className="hero-stat-label">Investimento</div><div className="hero-stat-value">R$ {spend.toLocaleString("pt-BR")}</div></div>
+          <div><div className="hero-stat-label">Alcance</div><div className="hero-stat-value">{reach.toLocaleString("pt-BR")}</div></div>
+          <div><div className="hero-stat-label">Conversões</div><div className="hero-stat-value">{visits}</div></div>
+          <div><div className="hero-stat-label">Status</div><div className="hero-stat-value">● Ativo</div></div>
+        </div>
+      </header>
+
+      <main className="report-main">
+        <section className="kpi-grid">
+          <div className="kpi">
+            <div className="kpi-label">Investimento</div>
+            <div className="kpi-value">R$ {spend.toLocaleString("pt-BR", {minimumFractionDigits: 2})}</div>
+            <div className="kpi-foot">Total no período</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Impressões</div>
+            <div className="kpi-value">{impressions.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Visualizações totais</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Alcance</div>
+            <div className="kpi-value">{reach.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Pessoas únicas</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Frequência</div>
+            <div className="kpi-value">{frequency}</div>
+            <div className="kpi-foot">Vezes por pessoa</div>
+          </div>
+        </section>
+
+        <section className="kpi-grid">
+          <div className="kpi">
+            <div className="kpi-label">Visitas/Conversões</div>
+            <div className="kpi-value">{visits.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot" style={{color: "var(--green)"}}>+Resultado principal</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Custo por Visita</div>
+            <div className="kpi-value">R$ {cpa.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot" style={{color: "var(--green)"}}>CPA Médio</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Engajamento</div>
+            <div className="kpi-value">{engagement.toLocaleString("pt-BR")}</div>
+            <div className="kpi-foot">Ações totais</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Novos Seguidores</div>
+            <div className="kpi-value">+{followers}</div>
+            <div className="kpi-foot">Crescimento</div>
+          </div>
+        </section>
+
+        <div style={{display: "grid", gridTemplateColumns: "2fr 1fr", gap: "16px", marginBottom: "24px"}}>
+          <div className="panel">
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">Comparativo de Anúncios</h3>
+                <p className="panel-sub">Performance por criativo</p>
               </div>
-            )
-          })}
-        </div>
-
-        <div className="spacer-12"></div>
-
-        <div className="section-label">Análise e próximos passos</div>
-        <div className="two-col">
-          <div className="col-left">
-            <div className="insight-box">
-              <div className="insight-title">Observações do período</div>
-              <ul className="insight-list">
-                <li><span className="arrow">→</span> Meta Ads gerou {leads} contatos diretos com CTR médio de {ctr}%.</li>
-                <li><span className="arrow">→</span> {reach.toLocaleString("pt-BR")} pessoas foram alcançadas pela marca no período.</li>
-                <li><span className="arrow">→</span> {countAmplificar} criativos estão com performance acima da média e devem ser priorizados.</li>
-                <li><span className="arrow">→</span> Recomendamos testar novas variações de público para diminuir o CPL de R$ {cpl}.</li>
-              </ul>
+              <div className="toggle-group">
+                <button className={activeMetric === 'visits' ? 'active' : ''} onClick={() => setActiveMetric('visits')}>Visitas</button>
+                <button className={activeMetric === 'spend' ? 'active' : ''} onClick={() => setActiveMetric('spend')}>Investimento</button>
+                <button className={activeMetric === 'impressions' ? 'active' : ''} onClick={() => setActiveMetric('impressions')}>Impressões</button>
+              </div>
+            </div>
+            <div style={{height: "300px"}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11}} />
+                  <RechartsTooltip contentStyle={{borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} />
+                  <Bar dataKey={activeMetric} fill="#2563eb" radius={[6, 6, 0, 0]} barSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <div className="col-right">
-            <div className="metas-box">
-              <div className="metas-title">Metas Sugeridas</div>
-              <div className="meta-row"><span className="meta-k">Investimento</span><span className="meta-v">R$ {spend.toLocaleString("pt-BR", {minimumFractionDigits: 2})}</span></div>
-              <div className="meta-row"><span className="meta-k">Conversões mín.</span><span className="meta-v">{(leads * 1.1).toFixed(0)} contatos</span></div>
-              <div className="meta-row"><span className="meta-k">CPL máximo</span><span className="meta-v">R$ {(parseFloat(cpl) * 0.95).toFixed(2)}</span></div>
-              <div className="meta-row"><span className="meta-k">CTR Meta mín.</span><span className="meta-v">1,0%</span></div>
-              <div className="meta-row"><span className="meta-k">Próximo envio</span><span className="meta-v">Próximo mês</span></div>
+
+          <div className="panel">
+            <div className="panel-head">
+              <h3 className="panel-title">Investimento</h3>
+            </div>
+            <div style={{height: "300px"}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={chartData} 
+                    dataKey="spend" 
+                    nameKey="name" 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={60} 
+                    outerRadius={80}
+                    label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                  >
+                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    height={36}
+                    formatter={(value, entry) => {
+                      const total = chartData.reduce((acc, d) => acc + d.spend, 0);
+                      const percent = total > 0 ? (entry.payload.spend / total * 100).toFixed(1) : 0;
+                      return `${value} (${percent}%)`;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        <div style={{flex: 1}}></div>
-
-        <div className="footer">
-          <div className="footer-left">Elaborado por <strong>UP REPORTS</strong></div>
-          <div className="footer-right">Relatório confidencial · {currentMonth} · Página 1 de 2</div>
-        </div>
-      </div>
-
-      <div className="page">
-        <div className="header-p2">
-          <div>
-            <div className="p2-title">Análise de criativos</div>
-            <div className="p2-sub">Decisões baseadas em performance de CTR e CPL</div>
-          </div>
-          <div className="p2-right">
-            <div className="p2-client">{client?.name}</div>
-            <div className="p2-period">{currentMonth} · Página 2 de 2</div>
-          </div>
-        </div>
-
-        <div className="status-legend">
-          <span><span className="dot dot-green"></span> Amplificar — performance acima da média</span>
-          <span><span class="dot dot-yellow"></span> Ajustar — potencial identificado</span>
-          <span><span class="dot dot-red"></span> Pausar — abaixo do aceitável</span>
-        </div>
-
-        <div className="section-label">Resumo dos criativos ativos</div>
-        <div className="resumo-grid">
-          <div className="resumo-card verde">
-            <div className="resumo-header">
-              <div className="resumo-icon icon-verde">+</div>
-              <div className="resumo-titulo">Para amplificar</div>
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Detalhamento por Anúncio</h3>
+              <p className="panel-sub">Análise individual por criativo</p>
             </div>
-            <div className="resumo-count">{countAmplificar}</div>
-            <div className="resumo-desc">criativos performando bem</div>
           </div>
-          <div className="resumo-card amarelo">
-            <div className="resumo-header">
-              <div className="resumo-icon icon-amarelo">~</div>
-              <div className="resumo-titulo">Para ajustar</div>
-            </div>
-            <div className="resumo-count">{countAjustar}</div>
-            <div className="resumo-desc">com potencial a explorar</div>
-          </div>
-          <div className="resumo-card vermelho">
-            <div className="resumo-header">
-              <div className="resumo-icon icon-vermelho">x</div>
-              <div className="resumo-titulo">Para pausar</div>
-            </div>
-            <div className="resumo-count">{countPausar}</div>
-            <div className="resumo-desc">abaixo do mínimo</div>
-          </div>
+          <table className="report-table">
+            <thead>
+              <tr>
+                <th>Anúncio</th>
+                <th>Status</th>
+                <th onClick={() => setSortField('impressions')} style={{cursor: 'pointer'}}>
+                  Impressões {sortField === 'impressions' && '▾'}
+                </th>
+                <th onClick={() => setSortField('freq')} style={{cursor: 'pointer'}}>
+                  Freq. {sortField === 'freq' && '▾'}
+                </th>
+                <th onClick={() => setSortField('spend')} style={{cursor: 'pointer'}}>
+                  Investimento {sortField === 'spend' && '▾'}
+                </th>
+                <th onClick={() => setSortField('leads')} style={{cursor: 'pointer'}}>
+                  Leads {sortField === 'leads' && '▾'}
+                </th>
+                <th onClick={() => setSortField('conversations')} style={{cursor: 'pointer'}}>
+                  Conversas {sortField === 'conversations' && '▾'}
+                </th>
+                <th>CPA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCreatives.map((c, i) => {
+                const c_spend = parseFloat(c.spend || 0);
+                const c_impressions = parseInt(c.impressions || 0);
+                const c_reach = parseInt(c.reach || 0);
+                const c_freq = c_reach > 0 ? (c_impressions / c_reach).toFixed(2) : "0.00";
+                const c_leads = getAdLeads(c);
+                const c_convs = getAdConversations(c);
+                const c_total = c_leads + c_convs;
+                const c_cpa = c_total > 0 ? (c_spend / c_total).toFixed(2) : "0.00";
+
+                return (
+                  <tr key={c.ad_id}>
+                    <td style={{fontWeight: "600"}}>{c.ad_name}</td>
+                    <td><span className="status-badge">● Ativo</span></td>
+                    <td>{c_impressions.toLocaleString("pt-BR")}</td>
+                    <td>{c_freq}</td>
+                    <td>R$ {c_spend.toLocaleString("pt-BR")}</td>
+                    <td><strong>{c_leads}</strong></td>
+                    <td><strong>{c_convs}</strong></td>
+                    <td>R$ {c_cpa}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
-        <div className="section-label">Detalhamento por criativo</div>
-        <table className="creatives-table">
-          <thead>
-            <tr>
-              <th style={{width:"25%"}}>Criativo</th>
-              <th style={{width:"10%"}}>Canal</th>
-              <th style={{width:"12%"}}>Impressões</th>
-              <th style={{width:"10%"}}>CTR</th>
-              <th style={{width:"12%"}}>Conversões</th>
-              <th style={{width:"10%"}}>Status</th>
-              <th>Recomendação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {creatives.sort((a,b)=>b.ctr-a.ctr).slice(0, 10).map(c => {
-              const c_ctr = parseFloat(c.ctr);
-              const c_leads = c.actions?.find(a => a.action_type.includes('lead') || a.action_type.includes('contact'))?.value || 0;
-              let status = "Ajustar";
-              let pillClass = "pill-testar";
-              let actionText = "Acompanhar performance e testar pequenas variações de copy.";
-              let actionClass = "yellow";
-              let rowBg = "#fefdf5";
-
-              if (c_ctr > 1.5) {
-                status = "Amplificar";
-                pillClass = "pill-ampliar";
-                actionText = "Excelente performance. Aumentar investimento gradualmente.";
-                actionClass = "green";
-                rowBg = "#f8fcf9";
-              } else if (c_ctr < 0.8) {
-                status = "Pausar";
-                pillClass = "pill-pausar";
-                actionText = "Performance baixa. Recomendamos pausar e substituir criativo.";
-                actionClass = "red";
-                rowBg = "#fef8f8";
-              }
-
-              return (
-                <tr key={c.ad_id} style={{background: rowBg}}>
-                  <td>
-                    <div className="creative-name">{c.ad_name}</div>
-                    <div className="creative-desc">ID: {c.ad_id}</div>
-                  </td>
-                  <td><span className="canal-pill cp-meta">Meta</span></td>
-                  <td><span className="metric-num">{parseInt(c.impressions).toLocaleString("pt-BR")}</span></td>
-                  <td><span className="metric-num" style={{color: actionClass==='green'?'#2d7a4f':actionClass==='red'?'#b03030':'#b07a10'}}>{c_ctr.toFixed(2)}%</span></td>
-                  <td><span className="metric-num">{c_leads}</span></td>
-                  <td><span className={`status-pill ${pillClass}`}>{status}</span></td>
-                  <td><span className={`action-text ${actionClass}`}>{actionText}</span></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-
-        <div style={{flex: 1}}></div>
-
-        <div className="footer">
-          <div className="footer-left">Elaborado por <strong>UP REPORTS</strong></div>
-          <div className="footer-right">Página 2 de 2</div>
+        <div className="insights-grid">
+          <div className="insight-card good">
+            <h4 style={{margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase"}}>Performance Positiva</h4>
+            <p style={{margin: 0, fontSize: "13px"}}>O CPA médio de R$ {cpa} está dentro da meta esperada para o período de {currentMonth}.</p>
+          </div>
+          <div className="insight-card">
+            <h4 style={{margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase"}}>Alcance e Frequência</h4>
+            <p style={{margin: 0, fontSize: "13px"}}>A frequência de {frequency} indica que o público está sendo impactado mais de duas vezes, ideal para memorização.</p>
+          </div>
+          <div className="insight-card warn">
+            <h4 style={{margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase"}}>Próximos Passos</h4>
+            <p style={{margin: 0, fontSize: "13px"}}>Recomendamos otimizar os criativos com CTR abaixo da média para reduzir ainda mais o CPA.</p>
+          </div>
         </div>
-      </div>
+      </main>
+
+      <footer style={{textAlign: "center", padding: "32px", color: "var(--ink-muted)", fontSize: "12px"}}>
+        Relatório gerado via <strong>UP REPORTS</strong> · {currentMonth}
+      </footer>
     </div>
-  )
+  );
 }
 
 export default function App() {
@@ -834,6 +918,7 @@ export default function App() {
   const [adAccounts, setAdAccounts] = useState([])
   const [campaigns, setCampaigns] = useState([])
   const [adCreatives, setAdCreatives] = useState([])
+  const [reportHistory, setReportHistory] = useState([])
   
   const [loading, setLoading] = useState(false)
   const [loadingAdsData, setLoadingAdsData] = useState(false)
@@ -855,7 +940,14 @@ export default function App() {
 
   const startReportConfig = (clientId) => {
     setSelectedClient(clientId)
-    setReportConfig({ active: true, objective: 'all', days: 30, ad_account_id: null, campaign_ids: [] })
+    const client = clients.find(c => c.id === clientId)
+    setReportConfig({ 
+      active: true, 
+      objective: 'all', 
+      days: 30, 
+      ad_account_id: client?.ad_account_id || null, 
+      campaign_ids: [] 
+    })
   }
 
 
@@ -995,7 +1087,12 @@ export default function App() {
     if (!selectedClient || !reportConfig) return
     setLoading(true)
     setFetchError(null)
-    const days = reportConfig.days || 30
+    const isCustom = reportConfig.days === 'custom'
+    const days = isCustom ? 30 : (reportConfig.days || 30)
+    const dateParams = isCustom && reportConfig.startDate && reportConfig.endDate 
+      ? `&start_date=${reportConfig.startDate}&end_date=${reportConfig.endDate}`
+      : `&days=${days}`
+
     try {
       // Coleta é pesada e pode dar timeout. Tentamos, mas não deixamos travar tudo.
       try {
@@ -1009,14 +1106,14 @@ export default function App() {
 
       const reqs = [
         authFetch(`${API}/api/v1/instagram/profile?client_id=${selectedClient}`),
-        authFetch(`${API}/api/v1/reports/summary?client_id=${selectedClient}&days=${days}`),
-        authFetch(`${API}/api/v1/reports/snapshots?client_id=${selectedClient}&days=${days}`),
+        authFetch(`${API}/api/v1/reports/summary?client_id=${selectedClient}${dateParams}`),
+        authFetch(`${API}/api/v1/reports/snapshots?client_id=${selectedClient}${dateParams}`),
       ]
 
       if (isOrganic) {
-        reqs.push(authFetch(`${API}/api/v1/instagram/media?client_id=${selectedClient}&days=${days}`))
+        reqs.push(authFetch(`${API}/api/v1/instagram/media?client_id=${selectedClient}${dateParams}`))
         reqs.push(authFetch(`${API}/api/v1/instagram/audience?client_id=${selectedClient}`))
-        reqs.push(authFetch(`${API}/api/v1/instagram/stories/history?client_id=${selectedClient}&days=${days}`))
+        reqs.push(authFetch(`${API}/api/v1/instagram/stories/history?client_id=${selectedClient}${dateParams}`))
       } else {
         reqs.push(Promise.resolve({ ok: true, json: () => Promise.resolve({data: []}) }))
         reqs.push(Promise.resolve({ ok: true, json: () => Promise.resolve({data: []}) }))
@@ -1024,8 +1121,8 @@ export default function App() {
       }
 
       if (isPaid) {
-        let adsUrl = `${API}/api/v1/ads/insights?client_id=${selectedClient}&days=${days}`
-        let creUrl = `${API}/api/v1/ads/creatives?client_id=${selectedClient}&days=${days}`
+        let adsUrl = `${API}/api/v1/ads/insights?client_id=${selectedClient}${dateParams}`
+        let creUrl = `${API}/api/v1/ads/creatives?client_id=${selectedClient}${dateParams}`
         if (reportConfig.ad_account_id) {
           adsUrl += `&ad_account_id=${reportConfig.ad_account_id}`
           creUrl += `&ad_account_id=${reportConfig.ad_account_id}`
@@ -1100,10 +1197,16 @@ export default function App() {
   }, [])
 
   useEffect(() => { if (selectedClient) fetchData() }, [selectedClient])
+  useEffect(() => {
+    if (selectedClient) {
+      authFetch(`${API}/api/v1/reports/history?client_id=${selectedClient}`)
+        .then(res => res.json())
+        .then(data => setReportHistory(Array.isArray(data) ? data : []))
+        .catch(e => console.error("Failed to fetch history", e));
+    }
+  }, [selectedClient]);
 
-  if (!auth?.access_token) {
-    return <LoginScreen onLogin={handleLogin} />
-  }
+  // Auth check moved below hooks to avoid violation
 
   const NavItem = ({ icon: Icon, label, active, onClick }) => (
     <button onClick={onClick} className={`nav-item${active ? ' active' : ''}`} style={{fontFamily:'inherit'}}>
@@ -1229,6 +1332,7 @@ export default function App() {
       { days: 90,  label: '90 dias' },
       { days: 180, label: '6 meses' },
       { days: 365, label: '1 ano' },
+      { days: 'custom', label: 'Personalizado' },
     ]
 
     const isPaid = reportConfig.objective === 'all' || reportConfig.objective === 'paid';
@@ -1329,7 +1433,7 @@ export default function App() {
           {/* Período */}
           <div>
             <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Período</p>
-            <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom: reportConfig.days === 'custom' ? "16px" : "0"}}>
               {periods.map(p => (
                 <button
                   key={p.days}
@@ -1341,12 +1445,68 @@ export default function App() {
                 </button>
               ))}
             </div>
+
+            {reportConfig.days === 'custom' && (
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", padding:"16px", background:"var(--bg-subtle-5)", borderRadius:"12px", border:"1px solid var(--border)"}}>
+                <div>
+                  <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data inicial</label>
+                  <input 
+                    type="date" 
+                    className="form-input" 
+                    value={reportConfig.startDate || ""} 
+                    onChange={(e) => setReportConfig({...reportConfig, startDate: e.target.value})}
+                    style={{width:"100%", background:"var(--bg-card)"}}
+                  />
+                </div>
+                <div>
+                  <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data final</label>
+                  <input 
+                    type="date" 
+                    className="form-input" 
+                    value={reportConfig.endDate || ""} 
+                    onChange={(e) => setReportConfig({...reportConfig, endDate: e.target.value})}
+                    style={{width:"100%", background:"var(--bg-card)"}}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <button
             className="btn-primary"
             disabled={isPaid && !reportConfig.ad_account_id}
-            onClick={() => { 
+            onClick={async () => { 
+              const client = clients.find(c => c.id === selectedClient);
+              
+              // 1. Persist Ad Account if changed
+              if (reportConfig.ad_account_id && reportConfig.ad_account_id !== client?.ad_account_id) {
+                try {
+                  await authFetch(`${API}/api/v1/clients/${selectedClient}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: client.name, ad_account_id: reportConfig.ad_account_id })
+                  });
+                  // Update local client state
+                  setClients(clients.map(c => c.id === selectedClient ? {...c, ad_account_id: reportConfig.ad_account_id} : c));
+                } catch (e) { console.error("Failed to save ad account", e); }
+              }
+
+              // 2. Save to History
+              try {
+                await authFetch(`${API}/api/v1/reports/history`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    client_id: selectedClient,
+                    report_type: reportConfig.objective,
+                    period_days: reportConfig.days,
+                    objective: reportConfig.objective,
+                    ad_account_id: reportConfig.ad_account_id,
+                    campaign_ids: reportConfig.campaign_ids
+                  })
+                });
+              } catch (e) { console.error("Failed to save history", e); }
+
               setReportConfig({...reportConfig, active: false}); 
               if (reportConfig.objective === 'paid') setTab("ads");
               else if (reportConfig.objective === 'organic') setTab("report");
@@ -1361,6 +1521,52 @@ export default function App() {
       </div>
     )
   }
+  const renderHistory = () => (
+    <div style={{padding:"24px 0"}}>
+      <div style={{background:"var(--bg-card)",border:"1px solid var(--border-med)",borderRadius:"16px",overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr style={{background:"var(--bg-subtle-md)",borderBottom:"1px solid var(--border)"}}>
+              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Tipo de Relatório</th>
+              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Período</th>
+              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Foco / Objetivo</th>
+              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Data de Geração</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reportHistory.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={{padding:"40px",textAlign:"center",color:"var(--text-muted)",fontSize:"14px"}}>Nenhum relatório gerado anteriormente.</td>
+              </tr>
+            ) : reportHistory.map(r => (
+              <tr key={r.id} style={{borderBottom:"1px solid var(--border)", transition: "background 0.2s"}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg-subtle-3)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                <td style={{padding:"16px 20px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                    <div style={{width:"32px",height:"32px",borderRadius:"8px",background:r.report_type==='paid'?'#3b82f620':r.report_type==='organic'?'#a855f720':'#10b98120',display:"grid",placeItems:"center",color:r.report_type==='paid'?'#3b82f6':r.report_type==='organic'?'#a855f7':'#10b981'}}>
+                      {r.report_type==='paid' ? <BarChart2 size={16}/> : r.report_type==='organic' ? <FileText size={16}/> : <LayoutDashboard size={16}/>}
+                    </div>
+                    <span style={{fontSize:"14px",fontWeight:"600",color:"var(--text-primary)"}}>
+                      {r.report_type === 'all' ? 'Completo (Orgânico + Pago)' : r.report_type === 'paid' ? 'Tráfego Pago' : 'Orgânico'}
+                    </span>
+                  </div>
+                </td>
+                <td style={{padding:"16px 20px",fontSize:"14px",color:"var(--text-secondary)"}}>Últimos {r.period_days} dias</td>
+                <td style={{padding:"16px 20px"}}>
+                  <span style={{fontSize:"12px",fontWeight:"600",padding:"4px 10px",borderRadius:"20px",background:"var(--bg-subtle-md)",color:"var(--text-muted)",textTransform:"capitalize"}}>
+                    {r.objective || 'Visão Geral'}
+                  </span>
+                </td>
+                <td style={{padding:"16px 20px",fontSize:"13px",color:"var(--text-muted)"}}>
+                  {new Date(r.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
 
   const renderHome = () => (
     <div style={{padding:"48px 40px",maxWidth:"1100px",margin:"0 auto",width:"100%"}}>
@@ -1372,9 +1578,24 @@ export default function App() {
         {clients.map(c => (
           <div key={c.id} className="project-card">
             <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
-              <div style={{width:"46px",height:"46px",borderRadius:"12px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0,display:"grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"}}>
-                <BarChart2 size={20} color="white"/>
-              </div>
+              {c.profile_picture_url ? (
+                <img 
+                  src={c.profile_picture_url} 
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'grid';
+                  }}
+                  style={{width:"46px",height:"46px",borderRadius:"12px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
+                />
+              ) : null}
+              {(!c.profile_picture_url || c.profile_picture_url) && (
+                <div style={{
+                  width:"46px",height:"46px",borderRadius:"12px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                  flexShrink:0,display: c.profile_picture_url ? "none" : "grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"
+                }}>
+                  <BarChart2 size={20} color="white"/>
+                </div>
+              )}
               <div style={{flex:1,overflow:"hidden"}}>
                 <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
                 <div style={{fontSize:"12px",color:"var(--text-muted)",marginTop:"2px",fontFamily:"monospace"}}>ID: {c.ig_id}</div>
@@ -1412,6 +1633,15 @@ export default function App() {
       </div>
     </div>
   )
+
+  if (!auth?.access_token) {
+    return (
+      <>
+        <LoginScreen onLogin={handleLogin} />
+        <Toasts items={toasts} onDismiss={dismissToast} />
+      </>
+    )
+  }
 
   return (
     <div style={{display:"flex",minHeight:"100vh",background:"var(--bg-base)",color:"var(--text-secondary)"}}>
@@ -1452,6 +1682,7 @@ export default function App() {
                 <NavItem icon={FileText} label="Relatório Orgânico" active={tab==="report"} onClick={()=>setTab("report")}/>
                 <NavItem icon={Image} label="Publicações" active={tab==="media"} onClick={()=>setTab("media")}/>
                 <NavItem icon={Play} label="Stories" active={tab==="stories"} onClick={()=>setTab("stories")}/>
+            <NavItem icon={History} label="Histórico" active={tab==="history"} onClick={()=>setTab("history")}/>
               </>
             )}
             {(reportConfig?.objective === 'all' || reportConfig?.objective === 'paid') && (
@@ -1491,7 +1722,7 @@ export default function App() {
               <span style={{color:"var(--text-700)",fontSize:"11px",letterSpacing:"0.12em",textTransform:"uppercase"}}>Ao vivo</span>
             </div>
             <h1 style={{color:"var(--text-100)",fontSize:"28px",fontWeight:"800"}}>
-              {tab==="dashboard"?"Visão Geral":tab==="media"?"Métricas de Publicações":tab==="stories"?"Histórico de Stories":tab==="report"?"Relatório de Instagram":"Relatório de Tráfego Pago"}
+              {tab==="dashboard"?"Visão Geral":tab==="media"?"Métricas de Publicações":tab==="stories"?"Histórico de Stories":tab==="report"?"Relatório de Instagram":tab==="history"?"Histórico de Relatórios":"Relatório de Tráfego Pago"}
             </h1>
           </div>
           <button onClick={fetchData} style={{display:"flex",alignItems:"center",gap:"8px",padding:"10px 16px",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"12px",color:"var(--text-500)",fontSize:"13px",cursor:"pointer"}}>
@@ -1547,9 +1778,12 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Dashboard / Reports ── */}
-        {!loading && !fetchError && (
-          <>
+        {/* ── Tabs Content ── */}
+        {tab === "history" && renderHistory()}
+        
+        {tab !== "history" && !loading && !fetchError && (
+          <div className="tab-content-wrapper">
+            {/* ── Dashboard / Reports ── */}
 
         {/* ── Empty State ── */}
         {!loading && !fetchError && tab==="dashboard" && !summary && (
@@ -1583,20 +1817,20 @@ export default function App() {
             <AdvancedStatCard 
               title="Alcance Orgânico" 
               dateRange={dateRangeLabel}
-              value={summary.totals?.reach?.toLocaleString("pt-BR")} 
+              value={(summary.totals?.reach || 0).toLocaleString("pt-BR")} 
               trend={summary.deltas?.reach} 
               previousValue={summary.totals?.prev_reach} 
             />
             <AdvancedStatCard 
               title="Visualizações totais" 
-              value={summary.totals?.impressions?.toLocaleString("pt-BR")} 
+              value={(summary.totals?.impressions || 0).toLocaleString("pt-BR")} 
               trend={summary.deltas?.impressions} 
               previousValue={summary.totals?.prev_impressions} 
             />
             <AdvancedStatCard 
               title="Alcance Total (Orgânico + Pago)" 
               dateRange={dateRangeLabel}
-              value={(summary.totals?.reach + parseInt(ads?.reach || 0)).toLocaleString("pt-BR")} 
+              value={( (summary?.totals?.reach || 0) + parseInt(ads?.reach || 0) ).toLocaleString("pt-BR")} 
             />
           </div>
           
@@ -1608,7 +1842,7 @@ export default function App() {
             />
              <AdvancedStatCard 
               title="Visitas do perfil" 
-              value={summary.totals?.profile_views?.toLocaleString("pt-BR")} 
+              value={(summary.totals?.profile_views || 0).toLocaleString("pt-BR")} 
               trend={summary.deltas?.profile_views} 
               previousValue={summary.totals?.prev_profile_views} 
             />
@@ -1884,7 +2118,7 @@ export default function App() {
             reportConfig={reportConfig} 
           />
         )}
-          </>
+          </div>
         )}
           </div>
         )}

@@ -16,6 +16,7 @@ class Client(Base):
     ig_id = Column(String, nullable=False)
     ad_account_id = Column(String, nullable=True)
     access_token = Column(String, nullable=False)
+    profile_picture_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_access = relationship("UserClientAccess", back_populates="client", cascade="all, delete-orphan")
@@ -86,6 +87,11 @@ class MetricSnapshot(Base):
     reach = Column(Integer, nullable=True)
     impressions = Column(Integer, nullable=True)
     profile_views = Column(Integer, nullable=True)
+    website_clicks = Column(Integer, nullable=True, default=0)
+    phone_call_clicks = Column(Integer, nullable=True, default=0)
+    email_contacts = Column(Integer, nullable=True, default=0)
+    get_directions_clicks = Column(Integer, nullable=True, default=0)
+    text_message_clicks = Column(Integer, nullable=True, default=0)
     raw_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -152,4 +158,17 @@ class MediaArchive(Base):
     shares = Column(Integer, default=0)
     plays = Column(Integer, default=0)
 
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ReportHistory(Base):
+    __tablename__ = "report_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    report_type = Column(String, nullable=False)
+    period_days = Column(Integer, nullable=False)
+    objective = Column(String, nullable=True)
+    ad_account_id = Column(String, nullable=True)
+    campaign_ids = Column(Text, nullable=True) # Stored as JSON string
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -198,7 +198,7 @@ def get_oauth_pending(oauth_session: str, current: User = Depends(require_roles(
 
 
 @router.post("/meta/complete")
-def complete_meta_oauth(
+async def complete_meta_oauth(
     data: CompleteOAuthRequest,
     current: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
@@ -230,12 +230,27 @@ def complete_meta_oauth(
 
     client_name = pending.client_name or selected.get("name") or "Cliente Meta"
 
+    # Fetch profile picture from IG
+    pic_url = None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            pic_resp = await client.get(
+                f"{settings.meta_base_url}/{ig_account['id']}",
+                params={"fields": "profile_picture_url", "access_token": token},
+            )
+            if pic_resp.status_code == 200:
+                pic_url = pic_resp.json().get("profile_picture_url")
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to fetch profile picture: {e}")
+
     existing = db.query(Client).filter(Client.page_id == selected["id"]).first()
     if existing:
         existing.name = client_name
         existing.ig_id = ig_account["id"]
         existing.ad_account_id = data.ad_account_id
         existing.access_token = encrypt_secret(token)
+        existing.profile_picture_url = pic_url
         db.commit()
         db.refresh(existing)
         client_row = existing
@@ -246,6 +261,7 @@ def complete_meta_oauth(
             ig_id=ig_account["id"],
             ad_account_id=data.ad_account_id,
             access_token=encrypt_secret(token),
+            profile_picture_url=pic_url
         )
         db.add(client_row)
         db.commit()

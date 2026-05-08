@@ -28,6 +28,7 @@ def _client_response(client: Client) -> dict:
         "page_id": client.page_id,
         "ig_id": client.ig_id,
         "ad_account_id": client.ad_account_id,
+        "profile_picture_url": client.profile_picture_url,
         "created_at": client.created_at,
     }
 
@@ -89,6 +90,7 @@ def grant_access(
 
 class ClientUpdate(BaseModel):
     name: str
+    ad_account_id: str | None = None
 
 @router.put("/{client_id}")
 def update_client(
@@ -111,6 +113,8 @@ def update_client(
             raise HTTPException(status_code=403, detail="Sem acesso ao cliente")
 
     c.name = data.name
+    if data.ad_account_id is not None:
+        c.ad_account_id = data.ad_account_id
     db.commit()
     db.refresh(c)
     return _client_response(c)

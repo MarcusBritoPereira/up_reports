@@ -10,7 +10,7 @@ from app.config import META_IG_ID, META_ACCESS_TOKEN, META_BASE_URL
 from app.core.secrets import decrypt_secret
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Client, User, UserClientAccess
+from app.models import Client, User, UserClientAccess, MetricSnapshot, StoryArchive, AudienceArchive, MediaArchive
 
 router = APIRouter()
 
@@ -256,17 +256,24 @@ async def collect_media_archive(client_id: int, current: User, db: Session):
         
         async def fetch_insights_and_save(item):
             media_id = item["id"]
-            metric = "reach,saved,impressions" 
-            if item.get("media_type") == "VIDEO":
-                metric = "reach,saved,shares,plays"
-                
-            # Use a safer metric list to avoid 400 errors from deprecated/unsupported metrics
-            safe_metric = "reach,saved,impressions"
-            if item.get("media_type") == "VIDEO":
-                safe_metric = "reach,saved,shares" # Removed "plays" as it causes 400 on newer API versions
+            media_type = item.get("media_type")
             
-            resp = await client.get(f"{META_BASE_URL}/{media_id}/insights", params={"metric": safe_metric, "access_token": token})
+            # Define metrics to try
+            metrics_to_try = ["reach", "saved"]
+            if media_type != "VIDEO":
+                metrics_to_try.append("impressions")
+            else:
+                # For videos/reels, sometimes video_views or plays work, but reach is safer
+                metrics_to_try.append("video_views")
+
             insights_dict = {}
+            # Try to fetch all requested metrics
+            resp = await client.get(f"{META_BASE_URL}/{media_id}/insights", params={"metric": ",".join(metrics_to_try), "access_token": token})
+            
+            if resp.status_code != 200:
+                # If failed, try only the most basic ones
+                resp = await client.get(f"{META_BASE_URL}/{media_id}/insights", params={"metric": "reach,saved", "access_token": token})
+            
             if resp.status_code == 200:
                 insights_data = resp.json().get("data", [])
                 insights_dict = {i["name"]: i["values"][0]["value"] for i in insights_data if i.get("values")}
@@ -284,18 +291,18 @@ async def collect_media_archive(client_id: int, current: User, db: Session):
                 exists.like_count = item.get("like_count", 0)
                 exists.comments_count = item.get("comments_count", 0)
                 exists.reach = insights_dict.get("reach", 0)
-                exists.impressions = insights_dict.get("impressions", 0)
+                exists.impressions = insights_dict.get("impressions") or insights_dict.get("video_views") or 0
                 exists.saved = insights_dict.get("saved", 0)
                 exists.shares = insights_dict.get("shares", 0)
-                exists.plays = insights_dict.get("plays", 0)
             else:
                 db.add(MediaArchive(
                     client_id=client_id, media_id=media_id, snapshot_date=date.today(),
                     caption=item.get("caption"), media_type=item.get("media_type"),
                     permalink=item.get("permalink"), thumbnail_url=item.get("thumbnail_url"), timestamp=ts,
                     like_count=item.get("like_count", 0), comments_count=item.get("comments_count", 0),
-                    reach=insights_dict.get("reach", 0), impressions=insights_dict.get("impressions", 0),
-                    saved=insights_dict.get("saved", 0), shares=insights_dict.get("shares", 0), plays=insights_dict.get("plays", 0)
+                    reach=insights_dict.get("reach", 0), 
+                    impressions=insights_dict.get("impressions") or insights_dict.get("video_views") or 0,
+                    saved=insights_dict.get("saved", 0), shares=insights_dict.get("shares", 0), plays=0
                 ))
                 
         await asyncio.gather(*[fetch_insights_and_save(i) for i in items])
