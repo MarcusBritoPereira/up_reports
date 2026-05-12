@@ -53,7 +53,7 @@ async def get_ad_accounts(
         "fields": "id,name,account_id,account_status,currency",
         "access_token": token,
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             raise HTTPException(status_code=r.status_code, detail=r.json())
@@ -78,7 +78,7 @@ async def get_campaigns(
         "effective_status": '["ACTIVE"]',
         "access_token": token,
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             raise HTTPException(status_code=r.status_code, detail=r.json())
@@ -114,7 +114,7 @@ async def get_ads_insights(
         filtering = [{"field": "campaign.id", "operator": "IN", "value": campaign_ids.split(",")}]
         params["filtering"] = json.dumps(filtering)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             return {"data": [{"reach": 0, "impressions": 0, "spend": 0, "clicks": 0, "ctr": 0, "cpc": 0, "actions": []}], "error": r.json()}
@@ -152,7 +152,7 @@ async def get_ad_creatives_insights(
         filtering = [{"field": "campaign.id", "operator": "IN", "value": campaign_ids.split(",")}]
         params["filtering"] = json.dumps(filtering)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             return {"data": [], "error": r.json()}

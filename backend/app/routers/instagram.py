@@ -50,7 +50,7 @@ async def get_profile(
         "fields": "id,name,username,followers_count,follows_count,media_count,profile_picture_url,biography",
         "access_token": token,
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             return {} # Empty profile
@@ -66,7 +66,7 @@ async def get_insights(
     ig_id, token = get_client_creds(client_id, current, db)
     url = f"{META_BASE_URL}/{ig_id}/insights"
     params = {"metric": "reach,impressions,profile_views,follower_count", "period": "day", "access_token": token}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             # Silently fallback to empty to avoid crashing the dashboard
@@ -83,7 +83,7 @@ async def get_audience(
     ig_id, token = get_client_creds(client_id, current, db)
     url = f"{META_BASE_URL}/{ig_id}/insights"
     params = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200:
             # Silently fallback to empty to avoid crashing the dashboard
@@ -216,7 +216,7 @@ async def collect_audience_archive(client_id: int, current: User, db: Session):
     ig_id, token = get_client_creds(client_id, current, db)
     url = f"{META_BASE_URL}/{ig_id}/insights"
     params = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code == 200:
             import json
@@ -249,7 +249,7 @@ async def collect_media_archive(client_id: int, current: User, db: Session):
         "limit": 50, # Archive recent 50 posts every day
         "access_token": token,
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(url, params=params)
         if r.status_code != 200: return
         items = r.json().get("data", [])

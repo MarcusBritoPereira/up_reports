@@ -74,8 +74,8 @@ async def collect_snapshot(
         profile = profile_resp.json()
 
         # 2. Fetch insights
-        # If no history, we fetch last 30 days. Meta allows since/until for daily metrics.
-        metrics = "reach,impressions,profile_views,phone_call_clicks,text_message_clicks,email_contacts,get_directions_clicks,website_clicks"
+        # Core metrics that work with period=day
+        metrics = "reach"
         params = {
             "metric": metrics,
             "period": "day",
@@ -84,10 +84,11 @@ async def collect_snapshot(
         
         if not has_history:
             # Fetch last 30 days to populate the dashboard immediately
-            until = datetime.now()
-            since = until - timedelta(days=30)
-            params["since"] = int(since.timestamp())
-            params["until"] = int(until.timestamp())
+            # Using YYYY-MM-DD format which is more reliable for Instagram insights
+            until = date.today() - timedelta(days=1)
+            since = until - timedelta(days=29)
+            params["since"] = since.strftime("%Y-%m-%d")
+            params["until"] = until.strftime("%Y-%m-%d")
 
         insights_resp = await client.get(f"{settings.meta_base_url}/{c.ig_id}/insights", params=params)
         
