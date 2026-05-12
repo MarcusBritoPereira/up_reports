@@ -950,6 +950,26 @@ export default function App() {
     })
   }
 
+  const loadHistoricalReport = (r) => {
+    setReportConfig({
+      active: false,
+      objective: r.report_type,
+      days: r.period_days,
+      ad_account_id: r.ad_account_id,
+      campaign_ids: r.campaign_ids || [],
+      startDate: r.start_date, // assuming backend might store these eventually
+      endDate: r.end_date
+    });
+    
+    if (r.report_type === 'paid') setTab("ads");
+    else if (r.report_type === 'organic') setTab("report");
+    else setTab("dashboard");
+    
+    // fetchData will be triggered by useEffect [selectedClient] OR we manually call it if selectedClient didn't change
+    fetchData();
+    pushToast("Relatório histórico carregado.");
+  }
+
 
   const authFetch = (url, options = {}) => {
     return fetch(url, {
@@ -1338,231 +1358,332 @@ export default function App() {
     const isPaid = reportConfig.objective === 'all' || reportConfig.objective === 'paid';
 
     return (
-      <div style={{padding:"48px 40px",maxWidth:"620px",margin:"0 auto",width:"100%"}}>
-        <div style={{marginBottom:"36px"}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:"6px",padding:"4px 12px",background:"var(--accent-soft)",borderRadius:"100px",marginBottom:"12px"}}>
-            <span style={{fontSize:"11px",fontWeight:"700",color:"var(--accent-light)",textTransform:"uppercase",letterSpacing:"0.08em"}}>Novo Relatório</span>
-          </div>
-          <h1 style={{fontSize:"26px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.5px",marginBottom:"6px"}}>Configurar Relatório</h1>
-          <p style={{fontSize:"14px",color:"var(--text-muted)"}}>Escolha o foco e o período para gerar sua análise.</p>
-        </div>
-
-        <div style={{display:"flex",flexDirection:"column",gap:"24px"}}>
-          {loadingAdsData && (
-            <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 12px",background:"var(--accent-soft)",borderRadius:"8px",fontSize:"12px",color:"var(--accent-light)"}}>
-              <RefreshCw size={12} style={{animation:"spin 1s linear infinite"}}/>
-              Carregando dados de anúncios...
+      <div style={{display:"grid", gridTemplateColumns: reportHistory.length > 0 ? "1fr 340px" : "1fr", gap:"40px", padding:"48px 40px", maxWidth: reportHistory.length > 0 ? "1100px" : "620px", margin:"0 auto", width:"100%"}}>
+        <div>
+          <div style={{marginBottom:"36px"}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:"6px",padding:"4px 12px",background:"var(--accent-soft)",borderRadius:"100px",marginBottom:"12px"}}>
+              <span style={{fontSize:"11px",fontWeight:"700",color:"var(--accent-light)",textTransform:"uppercase",letterSpacing:"0.08em"}}>Novo Relatório</span>
             </div>
-          )}
-          {/* Objetivo */}
-          <div>
-            <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Objetivo</p>
-            <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-              {objectives.map(obj => (
-                <button
-                  key={obj.value}
-                  className={`objective-card${reportConfig.objective === obj.value ? ' selected' : ''}`}
-                  onClick={() => setReportConfig({...reportConfig, objective: obj.value, ad_account_id: null, campaign_ids: []})}
-                  style={{fontFamily:"inherit",width:"100%",border:"none",cursor:"pointer",textAlign:"left"}}
-                >
-                  <div style={{fontSize:"22px",lineHeight:1}}>{obj.icon}</div>
-                  <div>
-                    <div style={{fontSize:"14px",fontWeight:"600",color:reportConfig.objective===obj.value?"var(--accent-light)":"var(--text-primary)",marginBottom:"2px"}}>{obj.label}</div>
-                    <div style={{fontSize:"12.5px",color:"var(--text-muted)"}}>{obj.desc}</div>
-                  </div>
-                  {reportConfig.objective === obj.value && (
-                    <div style={{marginLeft:"auto"}}><Check size={16} color="var(--accent-light)"/></div>
-                  )}
-                </button>
-              ))}
-            </div>
+            <h1 style={{fontSize:"26px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.5px",marginBottom:"6px"}}>Configurar Relatório</h1>
+            <p style={{fontSize:"14px",color:"var(--text-muted)"}}>Escolha o foco e o período para gerar sua análise.</p>
           </div>
 
-          {/* Ad Account Selection (only if paid) */}
-          {isPaid && (
+          <div style={{display:"flex",flexDirection:"column",gap:"24px"}}>
+            {loadingAdsData && (
+              <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 12px",background:"var(--accent-soft)",borderRadius:"8px",fontSize:"12px",color:"var(--accent-light)"}}>
+                <RefreshCw size={12} style={{animation:"spin 1s linear infinite"}}/>
+                Carregando dados de anúncios...
+              </div>
+            )}
+            {/* Objetivo */}
             <div>
-              <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Conta de Anúncios</p>
-              <select 
-                value={reportConfig.ad_account_id || ""}
-                onChange={(e) => setReportConfig({...reportConfig, ad_account_id: e.target.value, campaign_ids: []})}
-                className="form-input"
-                style={{width:"100%"}}
-              >
-                <option value="">Selecione uma conta</option>
-                {adAccounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.id})</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Campaign Selection (only if ad account selected) */}
-          {isPaid && reportConfig.ad_account_id && (
-            <div>
-              <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Campanhas</p>
-              <div style={{maxHeight:"200px", overflowY:"auto", background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"8px"}}>
-                <div 
-                  onClick={() => {
-                    const allIds = campaigns.map(c => c.id);
-                    const isAllSelected = reportConfig.campaign_ids?.length === campaigns.length;
-                    setReportConfig({...reportConfig, campaign_ids: isAllSelected ? [] : allIds});
-                  }}
-                  style={{padding:"8px", cursor:"pointer", display:"flex", alignItems:"center", gap:"10px", fontSize:"13px", color:"var(--text-primary)", borderBottom:"1px solid var(--border)"}}
-                >
-                   <input type="checkbox" checked={reportConfig.campaign_ids?.length === campaigns.length && campaigns.length > 0} readOnly />
-                   <b>Selecionar Todas</b>
-                </div>
-                {campaigns.map(camp => (
-                  <div 
-                    key={camp.id}
-                    onClick={() => {
-                      const current = reportConfig.campaign_ids || [];
-                      const next = current.includes(camp.id) ? current.filter(id => id !== camp.id) : [...current, camp.id];
-                      setReportConfig({...reportConfig, campaign_ids: next});
-                    }}
-                    style={{padding:"8px", cursor:"pointer", display:"flex", alignItems:"center", gap:"10px", fontSize:"13px", color:"var(--text-primary)"}}
+              <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Objetivo</p>
+              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                {objectives.map(obj => (
+                  <button
+                    key={obj.value}
+                    className={`objective-card${reportConfig.objective === obj.value ? ' selected' : ''}`}
+                    onClick={() => setReportConfig({...reportConfig, objective: obj.value, ad_account_id: null, campaign_ids: []})}
+                    style={{fontFamily:"inherit",width:"100%",border:"none",cursor:"pointer",textAlign:"left"}}
                   >
-                    <input type="checkbox" checked={reportConfig.campaign_ids?.includes(camp.id)} readOnly />
-                    <span>{camp.name}</span>
-                  </div>
+                    <div style={{fontSize:"22px",lineHeight:1}}>{obj.icon}</div>
+                    <div>
+                      <div style={{fontSize:"14px",fontWeight:"600",color:reportConfig.objective===obj.value?"var(--accent-light)":"var(--text-primary)",marginBottom:"2px"}}>{obj.label}</div>
+                      <div style={{fontSize:"12.5px",color:"var(--text-muted)"}}>{obj.desc}</div>
+                    </div>
+                    {reportConfig.objective === obj.value && (
+                      <div style={{marginLeft:"auto"}}><Check size={16} color="var(--accent-light)"/></div>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Período */}
-          <div>
-            <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Período</p>
-            <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom: reportConfig.days === 'custom' ? "16px" : "0"}}>
-              {periods.map(p => (
-                <button
-                  key={p.days}
-                  className={`period-chip${reportConfig.days === p.days ? ' selected' : ''}`}
-                  onClick={() => setReportConfig({...reportConfig, days: p.days})}
-                  style={{fontFamily:"inherit",border:"none",cursor:"pointer"}}
+            {/* Ad Account Selection (only if paid) */}
+            {isPaid && (
+              <div>
+                <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Conta de Anúncios</p>
+                <select 
+                  value={reportConfig.ad_account_id || ""}
+                  onChange={(e) => setReportConfig({...reportConfig, ad_account_id: e.target.value, campaign_ids: []})}
+                  className="form-input"
+                  style={{width:"100%"}}
                 >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+                  <option value="">Selecione uma conta</option>
+                  {adAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name} ({acc.id})</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {reportConfig.days === 'custom' && (
-              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", padding:"16px", background:"var(--bg-subtle-5)", borderRadius:"12px", border:"1px solid var(--border)"}}>
-                <div>
-                  <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data inicial</label>
-                  <input 
-                    type="date" 
-                    className="form-input" 
-                    value={reportConfig.startDate || ""} 
-                    onChange={(e) => setReportConfig({...reportConfig, startDate: e.target.value})}
-                    style={{width:"100%", background:"var(--bg-card)"}}
-                  />
-                </div>
-                <div>
-                  <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data final</label>
-                  <input 
-                    type="date" 
-                    className="form-input" 
-                    value={reportConfig.endDate || ""} 
-                    onChange={(e) => setReportConfig({...reportConfig, endDate: e.target.value})}
-                    style={{width:"100%", background:"var(--bg-card)"}}
-                  />
+            {/* Campaign Selection (only if ad account selected) */}
+            {isPaid && reportConfig.ad_account_id && (
+              <div>
+                <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Campanhas</p>
+                <div style={{maxHeight:"200px", overflowY:"auto", background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"8px"}}>
+                  <div 
+                    onClick={() => {
+                      const allIds = campaigns.map(c => c.id);
+                      const isAllSelected = reportConfig.campaign_ids?.length === campaigns.length;
+                      setReportConfig({...reportConfig, campaign_ids: isAllSelected ? [] : allIds});
+                    }}
+                    style={{padding:"8px", cursor:"pointer", display:"flex", alignItems:"center", gap:"10px", fontSize:"13px", color:"var(--text-primary)", borderBottom:"1px solid var(--border)"}}
+                  >
+                     <input type="checkbox" checked={reportConfig.campaign_ids?.length === campaigns.length && campaigns.length > 0} readOnly />
+                     <b>Selecionar Todas</b>
+                  </div>
+                  {campaigns.map(camp => (
+                    <div 
+                      key={camp.id}
+                      onClick={() => {
+                        const current = reportConfig.campaign_ids || [];
+                        const next = current.includes(camp.id) ? current.filter(id => id !== camp.id) : [...current, camp.id];
+                        setReportConfig({...reportConfig, campaign_ids: next});
+                      }}
+                      style={{padding:"8px", cursor:"pointer", display:"flex", alignItems:"center", gap:"10px", fontSize:"13px", color:"var(--text-primary)"}}
+                    >
+                      <input type="checkbox" checked={reportConfig.campaign_ids?.includes(camp.id)} readOnly />
+                      <span>{camp.name}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
-          </div>
 
-          <button
-            className="btn-primary"
-            disabled={isPaid && !reportConfig.ad_account_id}
-            onClick={async () => { 
-              const client = clients.find(c => c.id === selectedClient);
-              
-              // 1. Persist Ad Account if changed
-              if (reportConfig.ad_account_id && reportConfig.ad_account_id !== client?.ad_account_id) {
+            {/* Período */}
+            <div>
+              <p style={{fontSize:"13px",fontWeight:"700",color:"var(--text-secondary)",marginBottom:"12px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Período</p>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom: reportConfig.days === 'custom' ? "16px" : "0"}}>
+                {periods.map(p => (
+                  <button
+                    key={p.days}
+                    className={`period-chip${reportConfig.days === p.days ? ' selected' : ''}`}
+                    onClick={() => setReportConfig({...reportConfig, days: p.days})}
+                    style={{fontFamily:"inherit",border:"none",cursor:"pointer"}}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {reportConfig.days === 'custom' && (
+                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", padding:"16px", background:"var(--bg-subtle-5)", borderRadius:"12px", border:"1px solid var(--border)"}}>
+                  <div>
+                    <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data inicial</label>
+                    <input 
+                      type="date" 
+                      className="form-input" 
+                      value={reportConfig.startDate || ""} 
+                      onChange={(e) => setReportConfig({...reportConfig, startDate: e.target.value})}
+                      style={{width:"100%", background:"var(--bg-card)"}}
+                    />
+                  </div>
+                  <div>
+                    <label style={{fontSize:"11px", color:"var(--text-muted)", display:"block", marginBottom:"6px"}}>Data final</label>
+                    <input 
+                      type="date" 
+                      className="form-input" 
+                      value={reportConfig.endDate || ""} 
+                      onChange={(e) => setReportConfig({...reportConfig, endDate: e.target.value})}
+                      style={{width:"100%", background:"var(--bg-card)"}}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              className="btn-primary"
+              disabled={isPaid && !reportConfig.ad_account_id}
+              onClick={async () => { 
+                const client = clients.find(c => c.id === selectedClient);
+                
+                // 1. Persist Ad Account if changed
+                if (reportConfig.ad_account_id && reportConfig.ad_account_id !== client?.ad_account_id) {
+                  try {
+                    await authFetch(`${API}/api/v1/clients/${selectedClient}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name: client.name, ad_account_id: reportConfig.ad_account_id })
+                    });
+                    // Update local client state
+                    setClients(clients.map(c => c.id === selectedClient ? {...c, ad_account_id: reportConfig.ad_account_id} : c));
+                  } catch (e) { console.error("Failed to save ad account", e); }
+                }
+
+                // 2. Save to History
                 try {
-                  await authFetch(`${API}/api/v1/clients/${selectedClient}`, {
-                    method: 'PUT',
+                  const histRes = await authFetch(`${API}/api/v1/reports/history`, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: client.name, ad_account_id: reportConfig.ad_account_id })
+                    body: JSON.stringify({
+                      client_id: selectedClient,
+                      report_type: reportConfig.objective,
+                      period_days: reportConfig.days,
+                      objective: reportConfig.objective,
+                      ad_account_id: reportConfig.ad_account_id,
+                      campaign_ids: reportConfig.campaign_ids
+                    })
                   });
-                  // Update local client state
-                  setClients(clients.map(c => c.id === selectedClient ? {...c, ad_account_id: reportConfig.ad_account_id} : c));
-                } catch (e) { console.error("Failed to save ad account", e); }
-              }
+                  if (histRes.ok) {
+                    // Refresh history list
+                    authFetch(`${API}/api/v1/reports/history?client_id=${selectedClient}`)
+                      .then(res => res.json())
+                      .then(data => setReportHistory(Array.isArray(data) ? data : []))
+                      .catch(e => console.error("Failed to fetch history after save", e));
+                  }
+                } catch (e) { console.error("Failed to save history", e); }
 
-              // 2. Save to History
-              try {
-                await authFetch(`${API}/api/v1/reports/history`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    client_id: selectedClient,
-                    report_type: reportConfig.objective,
-                    period_days: reportConfig.days,
-                    objective: reportConfig.objective,
-                    ad_account_id: reportConfig.ad_account_id,
-                    campaign_ids: reportConfig.campaign_ids
-                  })
-                });
-              } catch (e) { console.error("Failed to save history", e); }
-
-              setReportConfig({...reportConfig, active: false}); 
-              if (reportConfig.objective === 'paid') setTab("ads");
-              else if (reportConfig.objective === 'organic') setTab("report");
-              else setTab("dashboard");
-              fetchData(); 
-            }}
-            style={{width:"100%",padding:"14px",fontSize:"15px",marginTop:"8px", opacity: (isPaid && !reportConfig.ad_account_id) ? 0.5 : 1}}
-          >
-            Gerar Relatório →
-          </button>
+                setReportConfig({...reportConfig, active: false}); 
+                if (reportConfig.objective === 'paid') setTab("ads");
+                else if (reportConfig.objective === 'organic') setTab("report");
+                else setTab("dashboard");
+                fetchData(); 
+              }}
+              style={{width:"100%",padding:"14px",fontSize:"15px",marginTop:"8px", opacity: (isPaid && !reportConfig.ad_account_id) ? 0.5 : 1}}
+            >
+              Gerar Relatório →
+            </button>
+          </div>
         </div>
+
+        {reportHistory.length > 0 && (
+          <div style={{borderLeft:"1px solid var(--border)", paddingLeft:"40px"}}>
+            <div style={{marginBottom:"24px"}}>
+              <h2 style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",marginBottom:"4px"}}>Relatórios Recentes</h2>
+              <p style={{fontSize:"12.5px",color:"var(--text-muted)"}}>Acesse rapidamente relatórios gerados anteriormente.</p>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
+              {reportHistory.slice(0, 5).map(r => (
+                <div 
+                  key={r.id} 
+                  className="card" 
+                  style={{padding:"14px", cursor:"pointer", transition:"all 0.2s"}}
+                  onClick={() => loadHistoricalReport(r)}
+                >
+                  <div style={{display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px"}}>
+                    <div style={{width:"28px",height:"28px",borderRadius:"6px",background:r.report_type==='paid'?'#3b82f620':r.report_type==='organic'?'#a855f720':'#10b98120',display:"grid",placeItems:"center",color:r.report_type==='paid'?'#3b82f6':r.report_type==='organic'?'#a855f7':'#10b981'}}>
+                      {r.report_type==='paid' ? <BarChart2 size={14}/> : r.report_type==='organic' ? <FileText size={14}/> : <LayoutDashboard size={14}/>}
+                    </div>
+                    <span style={{fontSize:"13px",fontWeight:"600",color:"var(--text-primary)"}}>
+                      {r.report_type === 'all' ? 'Completo' : r.report_type === 'paid' ? 'Tráfego Pago' : 'Orgânico'}
+                    </span>
+                  </div>
+                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                    <span style={{fontSize:"11px", color:"var(--text-muted)"}}>Últimos {r.period_days} dias</span>
+                    <span style={{fontSize:"11px", color:"var(--text-faint)"}}>
+                      {new Date(r.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                  <div style={{display:"flex", gap:"8px", marginTop:"4px"}}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); window.open(`${API}/api/v1/reports/export/pdf?client_id=${selectedClient}&days=${r.period_days}`, '_blank'); }}
+                      style={{background:"transparent", border:"none", color:"var(--text-muted)", fontSize:"10px", cursor:"pointer", display:"flex", alignItems:"center", gap:"4px"}}
+                    >
+                      <Download size={10}/> PDF
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); window.open(`${API}/api/v1/reports/export/csv?client_id=${selectedClient}&days=${r.period_days}`, '_blank'); }}
+                      style={{background:"transparent", border:"none", color:"var(--text-muted)", fontSize:"10px", cursor:"pointer", display:"flex", alignItems:"center", gap:"4px"}}
+                    >
+                      <Download size={10}/> CSV
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button 
+                onClick={() => { setReportConfig({...reportConfig, active: false}); setTab("history"); }}
+                style={{background:"transparent", border:"none", color:"var(--accent-light)", fontSize:"12px", fontWeight:"600", cursor:"pointer", textAlign:"center", padding:"8px"}}
+              >
+                Ver histórico completo →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+    )
+  }
     )
   }
   const renderHistory = () => (
     <div style={{padding:"24px 0"}}>
-      <div style={{background:"var(--bg-card)",border:"1px solid var(--border-med)",borderRadius:"16px",overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead>
-            <tr style={{background:"var(--bg-subtle-md)",borderBottom:"1px solid var(--border)"}}>
-              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Tipo de Relatório</th>
-              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Período</th>
-              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Foco / Objetivo</th>
-              <th style={{padding:"14px 20px",textAlign:"left",fontSize:"12px",fontWeight:"700",color:"var(--text-muted)",textTransform:"uppercase"}}>Data de Geração</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reportHistory.length === 0 ? (
-              <tr>
-                <td colSpan="4" style={{padding:"40px",textAlign:"center",color:"var(--text-muted)",fontSize:"14px"}}>Nenhum relatório gerado anteriormente.</td>
-              </tr>
-            ) : reportHistory.map(r => (
-              <tr key={r.id} style={{borderBottom:"1px solid var(--border)", transition: "background 0.2s"}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg-subtle-3)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                <td style={{padding:"16px 20px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                    <div style={{width:"32px",height:"32px",borderRadius:"8px",background:r.report_type==='paid'?'#3b82f620':r.report_type==='organic'?'#a855f720':'#10b98120',display:"grid",placeItems:"center",color:r.report_type==='paid'?'#3b82f6':r.report_type==='organic'?'#a855f7':'#10b981'}}>
-                      {r.report_type==='paid' ? <BarChart2 size={16}/> : r.report_type==='organic' ? <FileText size={16}/> : <LayoutDashboard size={16}/>}
-                    </div>
-                    <span style={{fontSize:"14px",fontWeight:"600",color:"var(--text-primary)"}}>
-                      {r.report_type === 'all' ? 'Completo (Orgânico + Pago)' : r.report_type === 'paid' ? 'Tráfego Pago' : 'Orgânico'}
-                    </span>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(340px, 1fr))", gap:"20px"}}>
+        {reportHistory.length === 0 ? (
+          <div style={{gridColumn:"1/-1", padding:"80px 20px", textAlign:"center", background:"var(--bg-card)", borderRadius:"16px", border:"1px solid var(--border)"}}>
+            <p style={{color:"var(--text-muted)", fontSize:"14px"}}>Nenhum relatório gerado anteriormente.</p>
+          </div>
+        ) : reportHistory.map(r => (
+          <div 
+            key={r.id} 
+            className="card" 
+            style={{display:"flex", flexDirection:"column", gap:"16px", position:"relative", transition: "transform 0.2s, border-color 0.2s"}}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = 'var(--accent-soft)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+          >
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
+              <div style={{display:"flex", alignItems:"center", gap:"12px"}}>
+                <div style={{width:"40px",height:"40px",borderRadius:"10px",background:r.report_type==='paid'?'#3b82f620':r.report_type==='organic'?'#a855f720':'#10b98120',display:"grid",placeItems:"center",color:r.report_type==='paid'?'#3b82f6':r.report_type==='organic'?'#a855f7':'#10b981'}}>
+                  {r.report_type==='paid' ? <BarChart2 size={20}/> : r.report_type==='organic' ? <FileText size={20}/> : <LayoutDashboard size={20}/>}
+                </div>
+                <div>
+                  <div style={{fontSize:"14px", fontWeight:"700", color:"var(--text-primary)"}}>
+                    {r.report_type === 'all' ? 'Completo (Orgânico + Pago)' : r.report_type === 'paid' ? 'Tráfego Pago' : 'Relatório Orgânico'}
                   </div>
-                </td>
-                <td style={{padding:"16px 20px",fontSize:"14px",color:"var(--text-secondary)"}}>Últimos {r.period_days} dias</td>
-                <td style={{padding:"16px 20px"}}>
-                  <span style={{fontSize:"12px",fontWeight:"600",padding:"4px 10px",borderRadius:"20px",background:"var(--bg-subtle-md)",color:"var(--text-muted)",textTransform:"capitalize"}}>
-                    {r.objective || 'Visão Geral'}
-                  </span>
-                </td>
-                <td style={{padding:"16px 20px",fontSize:"13px",color:"var(--text-muted)"}}>
-                  {new Date(r.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <div style={{fontSize:"11px", color:"var(--text-muted)", marginTop:"2px", textTransform:"uppercase", letterSpacing:"0.05em"}}>
+                    Gerado em {new Date(r.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex", gap:"8px"}}>
+                <button 
+                  className="btn-icon" 
+                  title="Exportar PDF"
+                  onClick={(e) => { e.stopPropagation(); window.open(`${API}/api/v1/reports/export/pdf?client_id=${selectedClient}&days=${r.period_days}`, '_blank'); }}
+                  style={{width:"32px", height:"32px"}}
+                >
+                  <FileText size={14}/>
+                </button>
+                <button 
+                  className="btn-icon" 
+                  title="Exportar CSV"
+                  onClick={(e) => { e.stopPropagation(); window.open(`${API}/api/v1/reports/export/csv?client_id=${selectedClient}&days=${r.period_days}`, '_blank'); }}
+                  style={{width:"32px", height:"32px"}}
+                >
+                  <Download size={14}/>
+                </button>
+              </div>
+            </div>
+
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", padding:"12px", background:"var(--bg-subtle)", borderRadius:"12px"}}>
+              <div>
+                <div style={{fontSize:"10px", color:"var(--text-faint)", fontWeight:"700", textTransform:"uppercase", marginBottom:"4px"}}>Período</div>
+                <div style={{fontSize:"13px", color:"var(--text-secondary)", fontWeight:"600"}}>Últimos {r.period_days} dias</div>
+              </div>
+              <div>
+                <div style={{fontSize:"10px", color:"var(--text-faint)", fontWeight:"700", textTransform:"uppercase", marginBottom:"4px"}}>Objetivo</div>
+                <div style={{fontSize:"13px", color:"var(--text-secondary)", fontWeight:"600", textTransform:"capitalize"}}>{r.objective || 'Visão Geral'}</div>
+              </div>
+            </div>
+
+            {r.campaign_ids && r.campaign_ids.length > 0 && (
+              <div>
+                <div style={{fontSize:"10px", color:"var(--text-faint)", fontWeight:"700", textTransform:"uppercase", marginBottom:"6px"}}>Campanhas selecionadas</div>
+                <div style={{display:"flex", flexWrap:"wrap", gap:"4px"}}>
+                  {r.campaign_ids.length} campanha(s) vinculada(s)
+                </div>
+              </div>
+            )}
+
+            <button 
+              className="btn-primary" 
+              style={{marginTop:"auto", width:"100%", padding:"10px", fontSize:"13px"}}
+              onClick={() => loadHistoricalReport(r)}
+            >
+              Visualizar Relatório
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )
