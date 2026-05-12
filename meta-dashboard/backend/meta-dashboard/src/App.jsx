@@ -1411,7 +1411,7 @@ export default function App() {
                 >
                   <option value="">Selecione uma conta</option>
                   {adAccounts.map(acc => (
-                    <option key={acc.id} value={acc.id}>{acc.name} ({acc.id})</option>
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
                   ))}
                 </select>
               </div>
