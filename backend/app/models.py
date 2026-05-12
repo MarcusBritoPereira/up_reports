@@ -172,3 +172,63 @@ class ReportHistory(Base):
     ad_account_id = Column(String, nullable=True)
     campaign_ids = Column(Text, nullable=True) # Stored as JSON string
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class WhatsAppConnection(Base):
+    __tablename__ = "whatsapp_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String, nullable=False, default="qr_provider")
+    phone_label = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="disconnected")
+    qr_payload = Column(Text, nullable=True)
+    qr_expires_at = Column(DateTime, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WhatsAppGroup(Base):
+    __tablename__ = "whatsapp_groups"
+    __table_args__ = (UniqueConstraint("connection_id", "external_group_id", name="uq_whatsapp_group_connection_external"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id = Column(Integer, ForeignKey("whatsapp_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_group_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    selected = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WhatsAppMessageTemplate(Base):
+    __tablename__ = "whatsapp_message_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    variables_json = Column(Text, nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WhatsAppReportSchedule(Base):
+    __tablename__ = "whatsapp_report_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("whatsapp_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("whatsapp_message_templates.id", ondelete="RESTRICT"), nullable=False, index=True)
+    report_type = Column(String, nullable=False, default="all")
+    period_days = Column(Integer, nullable=False, default=30)
+    frequency = Column(String, nullable=False, default="weekly")
+    send_time = Column(String, nullable=False, default="09:00")
+    timezone = Column(String, nullable=False, default="America/Sao_Paulo")
+    is_active = Column(Boolean, nullable=False, default=True)
+    next_run_at = Column(DateTime, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
