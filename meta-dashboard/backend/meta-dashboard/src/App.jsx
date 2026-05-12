@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History } from "lucide-react"
+import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History, Download, Smartphone, QrCode, Send, Clock, ShieldAlert } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts"
 
 const API = ""
@@ -919,6 +919,14 @@ export default function App() {
   const [campaigns, setCampaigns] = useState([])
   const [adCreatives, setAdCreatives] = useState([])
   const [reportHistory, setReportHistory] = useState([])
+  const [whatsappRisk, setWhatsappRisk] = useState(null)
+  const [whatsappConnections, setWhatsappConnections] = useState([])
+  const [whatsappGroups, setWhatsappGroups] = useState([])
+  const [whatsappTemplates, setWhatsappTemplates] = useState([])
+  const [whatsappSchedules, setWhatsappSchedules] = useState([])
+  const [whatsappLoading, setWhatsappLoading] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({ name: "Resumo mensal", body: "Olá! Segue o relatório {{report_type}} de {{period_days}} dias da empresa {{client_name}}: {{report_link}}" })
+  const [newSchedule, setNewSchedule] = useState({ group_id: "", template_id: "", report_type: "all", period_days: 30, frequency: "weekly", send_time: "09:00" })
   
   const [loading, setLoading] = useState(false)
   const [loadingAdsData, setLoadingAdsData] = useState(false)
@@ -1103,6 +1111,144 @@ export default function App() {
     }
   }
 
+
+  const loadWhatsAppData = async () => {
+    if (!selectedClient) return
+    setWhatsappLoading(true)
+    try {
+      const [riskRes, conRes, groupRes, templateRes, scheduleRes] = await Promise.all([
+        authFetch(`${API}/api/v1/whatsapp/risk-note`),
+        authFetch(`${API}/api/v1/whatsapp/connections?client_id=${selectedClient}`),
+        authFetch(`${API}/api/v1/whatsapp/groups?client_id=${selectedClient}`),
+        authFetch(`${API}/api/v1/whatsapp/templates?client_id=${selectedClient}`),
+        authFetch(`${API}/api/v1/whatsapp/schedules?client_id=${selectedClient}`),
+      ])
+      if (riskRes.ok) setWhatsappRisk(await riskRes.json())
+      if (conRes.ok) setWhatsappConnections(await conRes.json())
+      if (groupRes.ok) setWhatsappGroups(await groupRes.json())
+      if (templateRes.ok) setWhatsappTemplates(await templateRes.json())
+      if (scheduleRes.ok) setWhatsappSchedules(await scheduleRes.json())
+    } catch (e) {
+      pushToast("Erro ao carregar configurações do WhatsApp", "error")
+    } finally {
+      setWhatsappLoading(false)
+    }
+  }
+
+  const createWhatsAppConnection = async () => {
+    try {
+      const client = clients.find(c => c.id === selectedClient)
+      const r = await authFetch(`${API}/api/v1/whatsapp/connections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: selectedClient, phone_label: client?.name ? `WhatsApp ${client.name}` : "WhatsApp da agência" }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao criar conexão")
+      pushToast("Conexão WhatsApp criada.")
+      loadWhatsAppData()
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const startWhatsAppQr = async (connectionId) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/whatsapp/connections/${connectionId}/qr`, { method: "POST" })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao gerar QR")
+      setWhatsappConnections(prev => prev.map(c => c.id === connectionId ? data : c))
+      pushToast("QR gerado. Conecte um provedor WhatsApp Web para transformá-lo em QR escaneável.")
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const markWhatsAppConnected = async (connectionId) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/whatsapp/connections/${connectionId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "connected", phone_label: "Número conectado" }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao atualizar status")
+      setWhatsappConnections(prev => prev.map(c => c.id === connectionId ? data : c))
+      pushToast("Conexão marcada como ativa.")
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const importSampleGroups = async (connectionId) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/whatsapp/connections/${connectionId}/groups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([
+          { external_group_id: `sample-${selectedClient}-relatorios`, name: "Grupo de Relatórios do Cliente", selected: true },
+          { external_group_id: `sample-${selectedClient}-atendimento`, name: "Grupo de Atendimento", selected: false },
+        ]),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao sincronizar grupos")
+      setWhatsappGroups(data)
+      pushToast("Grupos de exemplo importados. Substitua pelo sync real do provedor.")
+      loadWhatsAppData()
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const toggleWhatsAppGroup = async (group) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/whatsapp/groups/${group.id}/selection`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected: !group.selected }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao atualizar grupo")
+      setWhatsappGroups(prev => prev.map(g => g.id === group.id ? data : g))
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const saveWhatsAppTemplate = async () => {
+    try {
+      const variables = Array.from(new Set((newTemplate.body.match(/{{\s*([\w_]+)\s*}}/g) || []).map(v => v.replace(/[{}\s]/g, ""))))
+      const r = await authFetch(`${API}/api/v1/whatsapp/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: selectedClient, name: newTemplate.name, body: newTemplate.body, variables }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao salvar template")
+      setWhatsappTemplates(prev => [...prev, data])
+      setNewTemplate({ name: "", body: "" })
+      pushToast("Template salvo.")
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const saveWhatsAppSchedule = async () => {
+    try {
+      const r = await authFetch(`${API}/api/v1/whatsapp/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newSchedule, client_id: selectedClient, group_id: Number(newSchedule.group_id), template_id: Number(newSchedule.template_id), period_days: Number(newSchedule.period_days) }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao criar agendamento")
+      setWhatsappSchedules(prev => [data, ...prev])
+      pushToast("Agendamento criado.")
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
   const fetchData = async () => {
     if (!selectedClient || !reportConfig) return
     setLoading(true)
@@ -1223,6 +1369,7 @@ export default function App() {
         .then(res => res.json())
         .then(data => setReportHistory(Array.isArray(data) ? data : []))
         .catch(e => console.error("Failed to fetch history", e));
+      loadWhatsAppData();
     }
   }, [selectedClient]);
 
@@ -1604,8 +1751,6 @@ export default function App() {
       </div>
     )
   }
-    )
-  }
   const renderHistory = () => (
     <div style={{padding:"24px 0"}}>
       <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(340px, 1fr))", gap:"20px"}}>
@@ -1687,6 +1832,101 @@ export default function App() {
       </div>
     </div>
   )
+
+
+  const renderWhatsApp = () => {
+    const selectedGroups = whatsappGroups.filter(g => g.selected)
+    return (
+      <div style={{display:"grid", gap:"20px"}}>
+        <div className="card" style={{borderColor:"rgba(245,158,11,.35)", background:"linear-gradient(135deg, rgba(245,158,11,.10), var(--bg-card))"}}>
+          <div style={{display:"flex", gap:"14px", alignItems:"flex-start"}}>
+            <ShieldAlert size={22} color="#f59e0b"/>
+            <div>
+              <h3 style={{fontSize:"15px", color:"var(--text-primary)", marginBottom:"8px"}}>Importante para evitar bloqueio do número</h3>
+              <p style={{fontSize:"13px", color:"var(--text-muted)", lineHeight:1.6}}>{whatsappRisk?.qr_group_automation || "Automação por QR usa WhatsApp Web/terceiros e pode gerar risco de bloqueio. Prefira número dedicado, consentimento dos clientes e baixo volume."}</p>
+              <p style={{fontSize:"12px", color:"var(--text-muted)", marginTop:"8px"}}>{whatsappRisk?.recommended_path}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px"}}>
+          <div className="card">
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px"}}>
+              <div>
+                <h3 style={{fontSize:"16px", color:"var(--text-primary)", marginBottom:"4px"}}>Conexão WhatsApp</h3>
+                <p style={{fontSize:"12px", color:"var(--text-muted)"}}>Base para QR, status e sincronização de grupos.</p>
+              </div>
+              <button className="btn-primary" onClick={createWhatsAppConnection} style={{fontSize:"12px", padding:"8px 10px"}}><Plus size={13}/> Nova</button>
+            </div>
+            {whatsappConnections.length === 0 ? (
+              <div style={{padding:"28px", textAlign:"center", color:"var(--text-muted)", border:"1px dashed var(--border)", borderRadius:"12px"}}>Nenhuma conexão criada.</div>
+            ) : whatsappConnections.map(c => (
+              <div key={c.id} style={{padding:"14px", border:"1px solid var(--border)", borderRadius:"12px", marginBottom:"10px"}}>
+                <div style={{display:"flex", justifyContent:"space-between", gap:"10px", marginBottom:"10px"}}>
+                  <div style={{display:"flex", alignItems:"center", gap:"10px"}}><Smartphone size={18}/><strong style={{color:"var(--text-primary)"}}>{c.phone_label || "WhatsApp"}</strong></div>
+                  <span style={{fontSize:"11px", padding:"3px 8px", borderRadius:"999px", background:c.status==="connected"?"#10b98120":"#f59e0b20", color:c.status==="connected"?"#10b981":"#f59e0b"}}>{c.status}</span>
+                </div>
+                {c.qr_payload && (
+                  <div style={{padding:"12px", background:"var(--bg-subtle)", borderRadius:"10px", marginBottom:"10px"}}>
+                    <div style={{display:"flex", alignItems:"center", gap:"8px", fontSize:"12px", color:"var(--text-secondary)", marginBottom:"6px"}}><QrCode size={14}/> Payload do QR</div>
+                    <code style={{display:"block", wordBreak:"break-all", fontSize:"11px", color:"var(--text-muted)"}}>{c.qr_payload}</code>
+                  </div>
+                )}
+                <div style={{display:"flex", gap:"8px", flexWrap:"wrap"}}>
+                  <button className="btn-ghost" onClick={() => startWhatsAppQr(c.id)} style={{fontSize:"12px"}}><QrCode size={13}/> Gerar QR</button>
+                  <button className="btn-ghost" onClick={() => markWhatsAppConnected(c.id)} style={{fontSize:"12px"}}><Check size={13}/> Marcar conectado</button>
+                  <button className="btn-ghost" onClick={() => importSampleGroups(c.id)} style={{fontSize:"12px"}}><RefreshCw size={13}/> Simular grupos</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <h3 style={{fontSize:"16px", color:"var(--text-primary)", marginBottom:"4px"}}>Grupos vinculados</h3>
+            <p style={{fontSize:"12px", color:"var(--text-muted)", marginBottom:"16px"}}>Selecione quais grupos podem receber relatórios.</p>
+            {whatsappGroups.length === 0 ? <div style={{padding:"28px", textAlign:"center", color:"var(--text-muted)", border:"1px dashed var(--border)", borderRadius:"12px"}}>Nenhum grupo sincronizado.</div> : whatsappGroups.map(g => (
+              <label key={g.id} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid var(--border)", cursor:"pointer"}}>
+                <span style={{fontSize:"13px", color:"var(--text-secondary)"}}>{g.name}</span>
+                <input type="checkbox" checked={g.selected} onChange={() => toggleWhatsAppGroup(g)} />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"20px"}}>
+          <div className="card">
+            <h3 style={{fontSize:"16px", color:"var(--text-primary)", marginBottom:"12px"}}>Templates editáveis</h3>
+            <input className="form-input" placeholder="Nome do template" value={newTemplate.name} onChange={e => setNewTemplate({...newTemplate, name:e.target.value})} style={{width:"100%", marginBottom:"10px"}} />
+            <textarea className="form-input" rows={6} placeholder="Mensagem com variáveis: {{client_name}}, {{report_type}}, {{period_days}}, {{report_link}}" value={newTemplate.body} onChange={e => setNewTemplate({...newTemplate, body:e.target.value})} style={{width:"100%", marginBottom:"10px", resize:"vertical"}} />
+            <button className="btn-primary" onClick={saveWhatsAppTemplate} disabled={!newTemplate.name || !newTemplate.body}><FileText size={14}/> Salvar template</button>
+            <div style={{marginTop:"16px", display:"grid", gap:"8px"}}>
+              {whatsappTemplates.map(t => <div key={t.id} style={{padding:"10px", border:"1px solid var(--border)", borderRadius:"10px"}}><strong style={{fontSize:"13px", color:"var(--text-primary)"}}>{t.name}</strong><p style={{fontSize:"12px", color:"var(--text-muted)", marginTop:"4px"}}>{t.body}</p></div>)}
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 style={{fontSize:"16px", color:"var(--text-primary)", marginBottom:"12px"}}>Disparo recorrente</h3>
+            <div style={{display:"grid", gap:"10px"}}>
+              <select className="form-input" value={newSchedule.group_id} onChange={e => setNewSchedule({...newSchedule, group_id:e.target.value})}><option value="">Selecione o grupo</option>{selectedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
+              <select className="form-input" value={newSchedule.template_id} onChange={e => setNewSchedule({...newSchedule, template_id:e.target.value})}><option value="">Selecione o template</option>{whatsappTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px"}}>
+                <select className="form-input" value={newSchedule.report_type} onChange={e => setNewSchedule({...newSchedule, report_type:e.target.value})}><option value="all">Completo</option><option value="organic">Orgânico</option><option value="paid">Tráfego pago</option></select>
+                <input className="form-input" type="number" min="1" max="365" value={newSchedule.period_days} onChange={e => setNewSchedule({...newSchedule, period_days:e.target.value})} />
+              </div>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px"}}>
+                <select className="form-input" value={newSchedule.frequency} onChange={e => setNewSchedule({...newSchedule, frequency:e.target.value})}><option value="daily">Diário</option><option value="weekly">Semanal</option><option value="monthly">Mensal</option></select>
+                <input className="form-input" type="time" value={newSchedule.send_time} onChange={e => setNewSchedule({...newSchedule, send_time:e.target.value})} />
+              </div>
+              <button className="btn-primary" onClick={saveWhatsAppSchedule} disabled={!newSchedule.group_id || !newSchedule.template_id}><Clock size={14}/> Criar agendamento</button>
+            </div>
+            <div style={{marginTop:"16px", display:"grid", gap:"8px"}}>
+              {whatsappSchedules.map(s => <div key={s.id} style={{padding:"10px", border:"1px solid var(--border)", borderRadius:"10px", display:"flex", justifyContent:"space-between"}}><span style={{fontSize:"13px", color:"var(--text-secondary)"}}>{s.frequency} · {s.report_type} · {s.period_days} dias</span><span style={{fontSize:"12px", color:s.is_active?"#10b981":"var(--text-muted)"}}>{s.is_active?"Ativo":"Pausado"}</span></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
 
   const renderHome = () => (
@@ -1804,6 +2044,7 @@ export default function App() {
                 <NavItem icon={Image} label="Publicações" active={tab==="media"} onClick={()=>setTab("media")}/>
                 <NavItem icon={Play} label="Stories" active={tab==="stories"} onClick={()=>setTab("stories")}/>
             <NavItem icon={History} label="Histórico" active={tab==="history"} onClick={()=>setTab("history")}/>
+            <NavItem icon={MessageCircle} label="WhatsApp" active={tab==="whatsapp"} onClick={()=>setTab("whatsapp")}/>
               </>
             )}
             {(reportConfig?.objective === 'all' || reportConfig?.objective === 'paid') && (
@@ -1843,7 +2084,7 @@ export default function App() {
               <span style={{color:"var(--text-700)",fontSize:"11px",letterSpacing:"0.12em",textTransform:"uppercase"}}>Ao vivo</span>
             </div>
             <h1 style={{color:"var(--text-100)",fontSize:"28px",fontWeight:"800"}}>
-              {tab==="dashboard"?"Visão Geral":tab==="media"?"Métricas de Publicações":tab==="stories"?"Histórico de Stories":tab==="report"?"Relatório de Instagram":tab==="history"?"Histórico de Relatórios":"Relatório de Tráfego Pago"}
+              {tab==="dashboard"?"Visão Geral":tab==="media"?"Métricas de Publicações":tab==="stories"?"Histórico de Stories":tab==="report"?"Relatório de Instagram":tab==="history"?"Histórico de Relatórios":tab==="whatsapp"?"Envio por WhatsApp":"Relatório de Tráfego Pago"}
             </h1>
           </div>
           <button onClick={fetchData} style={{display:"flex",alignItems:"center",gap:"8px",padding:"10px 16px",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"12px",color:"var(--text-500)",fontSize:"13px",cursor:"pointer"}}>
@@ -1901,8 +2142,9 @@ export default function App() {
 
         {/* ── Tabs Content ── */}
         {tab === "history" && renderHistory()}
+        {tab === "whatsapp" && renderWhatsApp()}
         
-        {tab !== "history" && !loading && !fetchError && (
+        {tab !== "history" && tab !== "whatsapp" && !loading && !fetchError && (
           <div className="tab-content-wrapper">
             {/* ── Dashboard / Reports ── */}
 
