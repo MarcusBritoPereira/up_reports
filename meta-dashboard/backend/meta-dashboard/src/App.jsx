@@ -1719,7 +1719,7 @@ export default function App() {
               )}
               <div style={{flex:1,overflow:"hidden"}}>
                 <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-                <div style={{fontSize:"12px",color:"var(--text-muted)",marginTop:"2px",fontFamily:"monospace"}}>ID: {c.ig_id}</div>
+
               </div>
               <button
                 onClick={() => renameClient(c.id, c.name)}
