@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts"
 
-const API = "http://127.0.0.1:8001"
+const API = ""
 const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f59e0b'];
 
 function TrendBadge({ value, isPercent = true }) {
