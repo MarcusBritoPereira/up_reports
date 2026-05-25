@@ -1604,8 +1604,6 @@ export default function App() {
       </div>
     )
   }
-    )
-  }
   const renderHistory = () => (
     <div style={{padding:"24px 0"}}>
       <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(340px, 1fr))", gap:"20px"}}>
