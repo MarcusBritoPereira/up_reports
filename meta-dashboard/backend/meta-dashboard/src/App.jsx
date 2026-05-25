@@ -175,14 +175,21 @@ function LoginScreen({ onLogin }) {
 function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
   const [open, setOpen] = useState(false)
   const current = clients.find(c => c.id === selected)
+  const [currentImageError, setCurrentImageError] = useState(false)
+
+  useEffect(() => {
+    setCurrentImageError(false)
+  }, [selected])
 
   return (
-    <div style={{position:"relative",marginBottom:"16px"}}>
+    <div style={{position:"relative",marginBottom:"14px"}}>
       <button onClick={() => setOpen(!open)} className="client-switcher-btn">
-        {current?.profile_picture_url ? (
-          <img src={current.profile_picture_url} style={{width:"26px",height:"26px",borderRadius:"7px",flexShrink:0,objectFit:"cover"}} />
+        {current?.profile_picture_url && !currentImageError ? (
+          <img src={current.profile_picture_url} onError={() => setCurrentImageError(true)} style={{width:"26px",height:"26px",borderRadius:"7px",flexShrink:0,objectFit:"cover"}} />
         ) : (
-          <div style={{width:"26px",height:"26px",borderRadius:"7px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+          <div className="client-avatar-fallback">
+            <BarChart2 size={13} color="white" />
+          </div>
         )}
         <span style={{flex:1,textAlign:"left",fontSize:"13px",fontWeight:"600",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {current?.name ?? "Selecionar cliente"}
@@ -191,15 +198,21 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
       </button>
 
       {open && (
-        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"var(--bg-card)",border:"1px solid var(--border-med)",borderRadius:"var(--radius-md)",overflow:"hidden",zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>
+        <div className="client-switcher-menu">
           {clients.map(c => (
             <button key={c.id} onClick={() => { onSelect(c.id); setOpen(false) }}
-              style={{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"9px 12px",background:"transparent",border:"none",cursor:"pointer",color: selected===c.id ? "var(--accent-light)" : "var(--text-secondary)",fontSize:"13px",fontFamily:"inherit"}}>
+              className="client-switcher-item"
+              style={{color: selected===c.id ? "var(--accent-light)" : "var(--text-secondary)"}}>
               {c.profile_picture_url ? (
-                <img src={c.profile_picture_url} style={{width:"22px",height:"22px",borderRadius:"6px",flexShrink:0,objectFit:"cover"}} />
+                <img src={c.profile_picture_url} onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "grid" }} style={{width:"22px",height:"22px",borderRadius:"6px",flexShrink:0,objectFit:"cover"}} />
               ) : (
-                <div style={{width:"22px",height:"22px",borderRadius:"6px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",flexShrink:0}}/>
+                <div className="client-avatar-fallback sm">
+                  <BarChart2 size={12} color="white" />
+                </div>
               )}
+              <div className="client-avatar-fallback sm" style={{display:"none"}}>
+                <BarChart2 size={12} color="white" />
+              </div>
               <span style={{flex:1,textAlign:"left"}}>{c.name}</span>
               {selected === c.id && <Check size={13} color="var(--accent-light)"/>}
             </button>
@@ -1707,12 +1720,12 @@ export default function App() {
                     e.target.style.display = 'none';
                     e.target.nextSibling.style.display = 'grid';
                   }}
-                  style={{width:"46px",height:"46px",borderRadius:"12px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
+                  style={{width:"42px",height:"42px",borderRadius:"11px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
                 />
               ) : null}
               {(!c.profile_picture_url || c.profile_picture_url) && (
-                <div style={{
-                  width:"46px",height:"46px",borderRadius:"12px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                <div className="project-avatar-fallback" style={{
+                  width:"42px",height:"42px",borderRadius:"11px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
                   flexShrink:0,display: c.profile_picture_url ? "none" : "grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"
                 }}>
                   <BarChart2 size={20} color="white"/>
