@@ -40,6 +40,11 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ActivateRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
 def _check_bruteforce(email: str) -> None:
     now = time.time()
     recent = [ts for ts in _login_attempts[email] if now - ts < BLOCK_WINDOW_SECONDS]
@@ -99,6 +104,23 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return {"id": user.id, "email": user.email, "role": user.role}
+
+
+
+
+@router.post("/activate")
+def activate_user(data: ActivateRequest, db: Session = Depends(get_db)):
+    email = data.email.lower().strip()
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if user.password_hash != "pending_invite" and user.is_active:
+        raise HTTPException(status_code=409, detail="Usuário já ativado")
+
+    user.password_hash = hash_password(data.password)
+    user.is_active = True
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/login")
