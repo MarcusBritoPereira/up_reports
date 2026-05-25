@@ -919,6 +919,8 @@ export default function App() {
   const [campaigns, setCampaigns] = useState([])
   const [adCreatives, setAdCreatives] = useState([])
   const [reportHistory, setReportHistory] = useState([])
+  const [users, setUsers] = useState([])
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "social_media" })
   
   const [loading, setLoading] = useState(false)
   const [loadingAdsData, setLoadingAdsData] = useState(false)
@@ -937,6 +939,15 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme)
     localStorage.setItem("meta_dash_theme", theme)
   }, [theme])
+
+  useEffect(() => {
+    if (auth?.access_token) {
+      loadUsers()
+    } else {
+      setUsers([])
+    }
+  }, [auth?.access_token])
+
 
   const startReportConfig = (clientId) => {
     setSelectedClient(clientId)
@@ -1026,6 +1037,47 @@ export default function App() {
     } finally {
       setCompletingOauth(false)
     }
+  }
+
+
+  const loadUsers = async () => {
+    if (auth?.user?.role !== "admin") return
+    try {
+      const r = await authFetch(`${API}/api/v1/users/`)
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao carregar usuários")
+      setUsers(data)
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const createUser = async () => {
+    try {
+      const r = await authFetch(`${API}/api/v1/users/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao criar usuário")
+      pushToast("Usuário criado. Solicite ativação via /auth/activate")
+      setNewUser({ name: "", email: "", role: "social_media" })
+      loadUsers()
+    } catch (e) { pushToast(e.message, "error") }
+  }
+
+  const toggleUserActive = async (u) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/users/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: u.role, is_active: !u.is_active }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao atualizar usuário")
+      setUsers(prev => prev.map(x => x.id === u.id ? data : x))
+    } catch (e) { pushToast(e.message, "error") }
   }
 
   const handleLogin = (payload) => {
@@ -1752,10 +1804,25 @@ export default function App() {
           <span style={{fontSize:"14px",fontWeight:"600"}}>Adicionar Projeto</span>
         </div>
       </div>
+      {auth?.user?.role === "admin" && (
+        <div style={{marginTop:"36px",background:"var(--bg-subtle-3)",border:"1px solid var(--border)",borderRadius:"14px",padding:"20px"}}>
+          <h2 style={{fontSize:"20px",fontWeight:"700",marginBottom:"12px"}}>Usuários do Sistema</h2>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr auto",gap:"8px",marginBottom:"10px"}}>
+            <input className="form-input" placeholder="Nome" value={newUser.name} onChange={e=>setNewUser(p=>({...p,name:e.target.value}))} />
+            <input className="form-input" placeholder="Email" value={newUser.email} onChange={e=>setNewUser(p=>({...p,email:e.target.value}))} />
+            <select className="form-input" value={newUser.role} onChange={e=>setNewUser(p=>({...p,role:e.target.value}))}><option value="social_media">social_media</option><option value="analyst">analyst</option><option value="admin">admin</option></select>
+            <button className="btn-primary" onClick={createUser}>Cadastrar</button>
+          </div>
+          <table style={{width:"100%",fontSize:"13px"}}><thead><tr><th style={{textAlign:"left"}}>Nome</th><th style={{textAlign:"left"}}>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>
+            {users.map(u => <tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td style={{textAlign:"center"}}>{u.role}</td><td style={{textAlign:"center"}}>{u.is_active?"Ativo":"Inativo"}</td><td><button className="btn-ghost" onClick={()=>toggleUserActive(u)}>{u.is_active?"Desativar":"Ativar"}</button></td></tr>)}
+          </tbody></table>
+        </div>
+      )}
     </div>
   )
 
   if (!auth?.access_token) {
+
     return (
       <>
         <LoginScreen onLogin={handleLogin} />
