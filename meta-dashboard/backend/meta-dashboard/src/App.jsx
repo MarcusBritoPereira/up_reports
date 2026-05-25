@@ -1740,15 +1740,16 @@ export default function App() {
 
 
   const renderHome = () => (
-    <div style={{padding:"48px 40px",maxWidth:"1100px",margin:"0 auto",width:"100%"}}>
-      <div style={{marginBottom:"36px"}}>
-        <h1 style={{fontSize:"26px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.5px",marginBottom:"6px"}}>Meus Projetos</h1>
-        <p style={{fontSize:"14px",color:"var(--text-muted)"}}>Selecione um projeto para gerar relatórios e acessar as métricas.</p>
+    <div className="home-shell">
+      <div className="home-header">
+        <div className="home-badge">Painel Administrativo</div>
+        <h1 style={{fontSize:"30px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.6px",marginBottom:"8px"}}>Meus Projetos</h1>
+        <p style={{fontSize:"14px",color:"var(--text-muted)",lineHeight:1.6}}>Gerencie clientes, acesse dashboards e acompanhe as métricas em um único painel.</p>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))",gap:"20px"}}>
+      <div className="project-grid">
         {clients.map(c => (
           <div key={c.id} className="project-card">
-            <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
+            <div className="project-card-head">
               {c.profile_picture_url ? (
                 <img 
                   src={c.profile_picture_url} 
@@ -1768,23 +1769,23 @@ export default function App() {
                 </div>
               )}
               <div style={{flex:1,overflow:"hidden"}}>
-                <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-
+                <div style={{fontSize:"17px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                <div style={{fontSize:"12px",color:"var(--text-muted)",marginTop:"4px"}}>Projeto conectado</div>
               </div>
               <button
                 onClick={() => renameClient(c.id, c.name)}
                 title="Renomear Projeto"
-                className="btn-icon"
-                style={{flexShrink:0,fontFamily:"inherit",fontSize:"14px"}}
+                className="btn-icon project-edit-btn"
+                style={{flexShrink:0,fontFamily:"inherit",fontSize:"13px"}}
               >
                 ✏️
               </button>
             </div>
             <div style={{height:"1px",background:"var(--border)"}}/>
             <button
-              className="btn-primary"
+              className="btn-primary project-access-btn"
               onClick={() => startReportConfig(c.id)}
-              style={{width:"100%",padding:"11px",fontSize:"14px"}}
+              style={{width:"100%",padding:"11px 12px",fontSize:"14px"}}
             >
               Acessar Painel →
             </button>
@@ -1792,14 +1793,13 @@ export default function App() {
         ))}
         <div
           onClick={() => setShowAddModal(true)}
-          style={{border:"1.5px dashed var(--border-med)",borderRadius:"var(--radius-lg)",padding:"32px 24px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:"10px",color:"var(--text-muted)",transition:"all 0.2s ease",minHeight:"160px"}}
-          onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent-light)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-med)'; e.currentTarget.style.color='var(--text-muted)'; }}
+          className="add-project-card"
         >
-          <div style={{width:"40px",height:"40px",borderRadius:"10px",background:"var(--bg-subtle-md)",display:"grid",placeItems:"center"}}>
-            <Plus size={20}/>
+          <div className="add-project-icon">
+            <Plus size={22}/>
           </div>
           <span style={{fontSize:"14px",fontWeight:"600"}}>Adicionar Projeto</span>
+          <span style={{fontSize:"12px",color:"var(--text-muted)"}}>Conecte uma nova conta para começar</span>
         </div>
       </div>
       {auth?.user?.role === "admin" && (
@@ -1879,23 +1879,20 @@ export default function App() {
 
         <div style={{flex:1}}/>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="btn-ghost"
-          style={{width:"100%",marginBottom:"6px",fontFamily:"inherit",fontSize:"13px",justifyContent:"flex-start"}}
-        >
-          {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
-          <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>
-        </button>
+        <div className="sidebar-footer">
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="btn-ghost sidebar-footer-btn"
+            style={{width:"100%",fontFamily:"inherit",fontSize:"13px",justifyContent:"flex-start"}}
+          >
+            {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
+            <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>
+          </button>
 
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 12px",borderRadius:"var(--radius-md)",border:"none",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:"500",width:"100%"}}
-        >
-          <LogOut size={15}/> Sair
-        </button>
+          <button onClick={handleLogout} className="sidebar-logout-btn">
+            <LogOut size={15}/> Sair
+          </button>
+        </div>
       </div>
 
       <div style={{flex:1,display:"flex",overflowY:"auto", margin: "0 auto", width:"100%"}}>
