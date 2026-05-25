@@ -87,6 +87,8 @@ function OAuthPagePicker({ open, onClose, pending, onSelect, loading }) {
 }
 
 function LoginScreen({ onLogin }) {
+  const [mode, setMode] = useState("login")
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -96,6 +98,16 @@ function LoginScreen({ onLogin }) {
     setError("")
     setLoading(true)
     try {
+      if (mode === "register") {
+        const registerRes = await fetch(`${API}/api/v1/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password }),
+        })
+        const registerData = await registerRes.json()
+        if (!registerRes.ok) throw new Error(registerData?.detail || "Falha no cadastro")
+      }
+
       const r = await fetch(`${API}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,10 +136,22 @@ function LoginScreen({ onLogin }) {
         </div>
 
         <div className="login-box">
-          <h2 style={{fontSize:"18px",fontWeight:"700",color:"var(--text-primary)",marginBottom:"4px"}}>Bem-vindo de volta</h2>
-          <p style={{fontSize:"13.5px",color:"var(--text-muted)",marginBottom:"24px"}}>Entre com sua conta para continuar</p>
+          <h2 style={{fontSize:"18px",fontWeight:"700",color:"var(--text-primary)",marginBottom:"4px"}}>{mode === "login" ? "Bem-vindo de volta" : "Criar conta"}</h2>
+          <p style={{fontSize:"13.5px",color:"var(--text-muted)",marginBottom:"24px"}}>{mode === "login" ? "Entre com sua conta para continuar" : "Cadastre usuário e senha para acessar"}</p>
 
           <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
+            {mode === "register" && (
+              <div>
+                <label className="form-label">Nome</label>
+                <input
+                  className="form-input"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Seu nome"
+                  onKeyDown={e => e.key === 'Enter' && submit()}
+                />
+              </div>
+            )}
             <div>
               <label className="form-label">Email</label>
               <input
@@ -162,7 +186,17 @@ function LoginScreen({ onLogin }) {
               disabled={loading}
               style={{width:"100%",padding:"13px",marginTop:"4px",fontSize:"15px"}}
             >
-              {loading ? <><RefreshCw size={15} className="spin" /> Entrando...</> : "Entrar"}
+              {loading ? <><RefreshCw size={15} className="spin" /> {mode === "login" ? "Entrando..." : "Cadastrando..."}</> : (mode === "login" ? "Entrar" : "Cadastrar")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setError("")
+                setMode(mode === "login" ? "register" : "login")
+              }}
+              style={{background:"transparent",border:"none",color:"var(--accent-light)",cursor:"pointer",fontSize:"13px",marginTop:"8px"}}
+            >
+              {mode === "login" ? "Não tem conta? Cadastre-se" : "Já tem conta? Entrar"}
             </button>
           </div>
         </div>
