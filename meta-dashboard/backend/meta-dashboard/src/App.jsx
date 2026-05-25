@@ -953,6 +953,9 @@ export default function App() {
   const [campaigns, setCampaigns] = useState([])
   const [adCreatives, setAdCreatives] = useState([])
   const [reportHistory, setReportHistory] = useState([])
+  const [users, setUsers] = useState([])
+  const [creatingUser, setCreatingUser] = useState(false)
+  const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role: "social_media" })
   
   const [loading, setLoading] = useState(false)
   const [loadingAdsData, setLoadingAdsData] = useState(false)
@@ -1109,6 +1112,67 @@ export default function App() {
     }
   }
 
+  const loadUsers = async () => {
+    try {
+      const r = await authFetch(`${API}/api/v1/users/`)
+      if (r.status === 401) return handleLogout()
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao carregar usuários")
+      setUsers(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setUsers([])
+    }
+  }
+
+  const createSystemUser = async () => {
+    if (!userForm.name.trim() || !userForm.email.trim() || !userForm.password || !userForm.role) {
+      pushToast("Preencha nome, email, senha e role.", "error")
+      return
+    }
+    if (userForm.password.length < 6) {
+      pushToast("A senha deve ter pelo menos 6 caracteres.", "error")
+      return
+    }
+
+    setCreatingUser(true)
+    try {
+      const r = await authFetch(`${API}/api/v1/users/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userForm.name.trim(),
+          email: userForm.email.trim(),
+          password: userForm.password,
+          role: userForm.role,
+        }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao cadastrar usuário")
+      setUsers(prev => [data, ...prev])
+      setUserForm({ name: "", email: "", password: "", role: "social_media" })
+      pushToast("Usuário cadastrado com sucesso.")
+    } catch (e) {
+      pushToast(e.message, "error")
+    } finally {
+      setCreatingUser(false)
+    }
+  }
+
+  const toggleUserStatus = async (user) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: user.role, is_active: !user.is_active }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao atualizar usuário")
+      setUsers(prev => prev.map(u => (u.id === user.id ? data : u)))
+    } catch (e) {
+      pushToast(e.message, "error")
+    }
+  }
+
   const loadAdAccounts = async () => {
     if (!selectedClient) return
     setLoadingAdsData(true)
@@ -1229,6 +1293,7 @@ export default function App() {
   }
 
   useEffect(() => { if (auth?.access_token) loadClients() }, [auth?.access_token])
+  useEffect(() => { if (auth?.access_token && auth?.user?.role === "admin") loadUsers() }, [auth?.access_token, auth?.user?.role])
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const oauthStatus = params.get("oauth_status")
@@ -1784,6 +1849,52 @@ export default function App() {
           <span style={{fontSize:"14px",fontWeight:"600"}}>Adicionar Projeto</span>
         </div>
       </div>
+      {auth?.user?.role === "admin" && (
+        <div style={{marginTop:"36px",background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:"16px",padding:"20px"}}>
+          <h2 style={{fontSize:"28px",fontWeight:"800",color:"var(--text-primary)",marginBottom:"14px"}}>Usuários do Sistema</h2>
+          <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1fr 0.9fr auto",gap:"10px",marginBottom:"14px"}}>
+            <input className="form-input" placeholder="Nome" value={userForm.name} onChange={(e) => setUserForm(prev => ({ ...prev, name: e.target.value }))} />
+            <input className="form-input" placeholder="Email" value={userForm.email} onChange={(e) => setUserForm(prev => ({ ...prev, email: e.target.value }))} />
+            <input className="form-input" type="password" placeholder="Senha" value={userForm.password} onChange={(e) => setUserForm(prev => ({ ...prev, password: e.target.value }))} />
+            <select className="form-input" value={userForm.role} onChange={(e) => setUserForm(prev => ({ ...prev, role: e.target.value }))}>
+              <option value="social_media">social_media</option>
+              <option value="analyst">analyst</option>
+              <option value="admin">admin</option>
+            </select>
+            <button className="btn-primary" onClick={createSystemUser} disabled={creatingUser} style={{whiteSpace:"nowrap"}}>
+              {creatingUser ? "Cadastrando..." : "Cadastrar"}
+            </button>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr style={{textAlign:"left",fontSize:"13px",color:"var(--text-muted)"}}>
+                  <th style={{padding:"8px 6px"}}>Nome</th>
+                  <th style={{padding:"8px 6px"}}>Email</th>
+                  <th style={{padding:"8px 6px"}}>Role</th>
+                  <th style={{padding:"8px 6px"}}>Status</th>
+                  <th style={{padding:"8px 6px"}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.id} style={{borderTop:"1px solid var(--border)"}}>
+                    <td style={{padding:"10px 6px"}}>{u.name}</td>
+                    <td style={{padding:"10px 6px"}}>{u.email}</td>
+                    <td style={{padding:"10px 6px",textTransform:"lowercase"}}>{u.role}</td>
+                    <td style={{padding:"10px 6px"}}>{u.is_active ? "Ativo" : "Inativo"}</td>
+                    <td style={{padding:"10px 6px"}}>
+                      <button className="btn-ghost" onClick={() => toggleUserStatus(u)} style={{padding:"6px 10px",fontSize:"12px"}}>
+                        {u.is_active ? "Desativar" : "Ativar"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 
