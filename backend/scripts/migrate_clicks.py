@@ -1,9 +1,5 @@
-from sqlalchemy import create_engine, text
-import os
-
-# Use absolute path for sqlite
-DB_PATH = "/Users/marcuspereira/up_reports/up_reports-metrics-dashboard/backend/dashboard.db"
-engine = create_engine(f"sqlite:///{DB_PATH}")
+from app.database import engine
+from sqlalchemy import text
 
 columns = [
     "website_clicks",
@@ -13,11 +9,15 @@ columns = [
     "text_message_clicks"
 ]
 
-with engine.connect() as conn:
-    for col in columns:
-        try:
-            conn.execute(text(f"ALTER TABLE metric_snapshots ADD COLUMN {col} INTEGER DEFAULT 0"))
-            print(f"Added {col} to metric_snapshots")
-        except Exception as e:
-            print(f"Column {col} already exists or error: {e}")
-    conn.commit()
+def run_migration():
+    with engine.connect() as conn:
+        for col in columns:
+            try:
+                conn.execute(text(f"ALTER TABLE metric_snapshots ADD COLUMN {col} INTEGER DEFAULT 0"))
+                print(f"Added {col} to metric_snapshots")
+            except Exception as e:
+                print(f"Column {col} already exists or error: {e}")
+        conn.commit()
+
+if __name__ == "__main__":
+    run_migration()

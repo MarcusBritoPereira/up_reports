@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react"
-import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History } from "lucide-react"
+import { Users, TrendingUp, Image, RefreshCw, Heart, MessageCircle, ExternalLink, LayoutDashboard, BarChart2, Settings, ChevronDown, Plus, Check, LogOut, Play, Bookmark, Share2, Sun, Moon, FileText, History, List, LayoutGrid, Layers, Trash2, Download } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts"
 
-const API = ""
+const API = "http://localhost:8000"
 const COLORS = ['#a855f7', '#3b82f6', '#ec4899', '#10b981', '#f59e0b'];
 
 function TrendBadge({ value, isPercent = true }) {
@@ -219,7 +219,12 @@ function ClientSwitcher({ clients, selected, onSelect, onAdd }) {
 
 function AddClientModal({ onClose, authFetch, onToast }) {
   const [clientName, setClientName] = useState("")
+  const [pageId, setPageId] = useState("")
+  const [igId, setIgId] = useState("")
+  const [accessToken, setAccessToken] = useState("")
+  const [showManual, setShowManual] = useState(false)
   const [loadingProvider, setLoadingProvider] = useState(null)
+  const [savingManual, setSavingManual] = useState(false)
 
   const connectMeta = async (provider) => {
     if (!clientName || clientName.trim().length < 2) return
@@ -237,33 +242,102 @@ function AddClientModal({ onClose, authFetch, onToast }) {
     }
   }
 
+  const saveManual = async () => {
+    if (!clientName || !pageId || !igId || !accessToken) {
+      onToast("Por favor, preencha todos os campos.", "error")
+      return
+    }
+    setSavingManual(true)
+    try {
+      const r = await authFetch(`${API}/api/v1/clients/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: clientName.trim(),
+          page_id: pageId.trim(),
+          ig_id: igId.trim(),
+          access_token: accessToken.trim()
+        })
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || "Falha ao salvar projeto")
+      onToast("Projeto adicionado com sucesso!", "success")
+      window.location.reload()
+    } catch (e) {
+      onToast(e.message, "error")
+    } finally {
+      setSavingManual(false)
+    }
+  }
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
-      <div style={{background:"var(--bg-card)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"32px",width:"460px"}}>
+      <div style={{background:"var(--bg-card)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px",padding:"32px",width:"460px",maxHeight:"90vh",overflowY:"auto"}}>
         <h3 style={{color:"var(--text-200)",fontWeight:"700",fontSize:"18px",marginBottom:"10px"}}>Conectar cliente</h3>
-        <p style={{color:"var(--text-600)",fontSize:"13px",marginBottom:"18px"}}>Escolha como conectar: login do Instagram ou login do Facebook (BM).</p>
+        <p style={{color:"var(--text-600)",fontSize:"13px",marginBottom:"18px"}}>
+          {showManual ? "Insira as credenciais e o token da Meta manualmente." : "Escolha como conectar: login do Instagram ou login do Facebook (BM)."}
+        </p>
 
-        <div style={{marginBottom:"18px"}}>
-          <p style={{color:"var(--text-600)",fontSize:"12px",marginBottom:"6px"}}>Nome do cliente</p>
+        <div style={{marginBottom:"14px"}}>
+          <p style={{color:"var(--text-600)",fontSize:"12px",marginBottom:"6px"}}>Nome do cliente / Projeto</p>
           <input value={clientName} onChange={e => setClientName(e.target.value)}
             placeholder="Ex: João Silva"
             style={{width:"100%",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"var(--text-300)",fontSize:"14px",outline:"none"}}/>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
-          <button onClick={() => connectMeta("instagram")} disabled={loadingProvider!==null}
-            style={{padding:"12px",background:"rgba(236,72,153,0.14)",border:"1px solid rgba(236,72,153,0.35)",borderRadius:"10px",color:"#f9a8d4",cursor:"pointer",fontWeight:"600"}}>
-            {loadingProvider === "instagram" ? "Conectando..." : "Entrar com Instagram"}
-          </button>
-          <button onClick={() => connectMeta("facebook")} disabled={loadingProvider!==null}
-            style={{padding:"12px",background:"rgba(59,130,246,0.14)",border:"1px solid rgba(59,130,246,0.35)",borderRadius:"10px",color:"#93c5fd",cursor:"pointer",fontWeight:"600"}}>
-            {loadingProvider === "facebook" ? "Conectando..." : "Entrar com Facebook"}
-          </button>
-        </div>
+        {!showManual ? (
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
+              <button onClick={() => connectMeta("instagram")} disabled={loadingProvider!==null}
+                style={{padding:"12px",background:"rgba(236,72,153,0.14)",border:"1px solid rgba(236,72,153,0.35)",borderRadius:"10px",color:"#f9a8d4",cursor:"pointer",fontWeight:"600"}}>
+                {loadingProvider === "instagram" ? "Conectando..." : "Entrar com Instagram"}
+              </button>
+              <button onClick={() => connectMeta("facebook")} disabled={loadingProvider!==null}
+                style={{padding:"12px",background:"rgba(59,130,246,0.14)",border:"1px solid rgba(59,130,246,0.35)",borderRadius:"10px",color:"#93c5fd",cursor:"pointer",fontWeight:"600"}}>
+                {loadingProvider === "facebook" ? "Conectando..." : "Entrar com Facebook"}
+              </button>
+            </div>
 
-        <p style={{color:"var(--text-700)",fontSize:"12px",lineHeight:1.45,marginBottom:"16px"}}>
-          Se preferir conectar usando um token de acesso de longa duração manual, utilize o formulário avançado em configurações.
-        </p>
+            <p style={{color:"var(--text-700)",fontSize:"12px",lineHeight:1.45,marginBottom:"16px",cursor:"pointer",textDecoration:"underline"}} onClick={() => setShowManual(true)}>
+              Se preferir conectar usando um token de acesso manual (sem criar aplicativo no Meta Developer), clique aqui.
+            </p>
+          </>
+        ) : (
+          <>
+            <div style={{marginBottom:"14px"}}>
+              <p style={{color:"var(--text-600)",fontSize:"12px",marginBottom:"6px"}}>ID da Página do Facebook</p>
+              <input value={pageId} onChange={e => setPageId(e.target.value)}
+                placeholder="Ex: 123456789012345"
+                style={{width:"100%",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"var(--text-300)",fontSize:"14px",outline:"none"}}/>
+            </div>
+
+            <div style={{marginBottom:"14px"}}>
+              <p style={{color:"var(--text-600)",fontSize:"12px",marginBottom:"6px"}}>ID da Conta Comercial do Instagram</p>
+              <input value={igId} onChange={e => setIgId(e.target.value)}
+                placeholder="Ex: 987654321098765"
+                style={{width:"100%",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"var(--text-300)",fontSize:"14px",outline:"none"}}/>
+            </div>
+
+            <div style={{marginBottom:"16px"}}>
+              <p style={{color:"var(--text-600)",fontSize:"12px",marginBottom:"6px"}}>Token de Acesso de Longa Duração</p>
+              <input value={accessToken} onChange={e => setAccessToken(e.target.value)}
+                placeholder="Insira o Access Token gerado"
+                style={{width:"100%",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",padding:"10px 14px",color:"var(--text-300)",fontSize:"14px",outline:"none"}}/>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
+              <button onClick={saveManual} disabled={savingManual}
+                style={{padding:"12px",background:"rgba(16,185,129,0.15)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:"10px",color:"#34d399",cursor:"pointer",fontWeight:"600"}}>
+                {savingManual ? "Salvando..." : "Salvar Projeto"}
+              </button>
+              <button onClick={() => setShowManual(false)}
+                style={{padding:"12px",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"var(--text-500)",cursor:"pointer",fontWeight:"600"}}>
+                Voltar
+              </button>
+            </div>
+          </>
+        )}
+
         <button onClick={onClose} style={{width:"100%",padding:"12px",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"10px",color:"var(--text-500)",cursor:"pointer",fontSize:"14px"}}>
           Fechar
         </button>
@@ -916,6 +990,7 @@ export default function App() {
   const [snapshots, setSnapshots] = useState([])
   const [stories, setStories] = useState([])
   const [adAccounts, setAdAccounts] = useState([])
+  const [globalAdAccounts, setGlobalAdAccounts] = useState([])
   const [campaigns, setCampaigns] = useState([])
   const [adCreatives, setAdCreatives] = useState([])
   const [reportHistory, setReportHistory] = useState([])
@@ -932,6 +1007,7 @@ export default function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem("meta_dash_theme") || "dark")
   const [reportConfig, setReportConfig] = useState(null)
+  const [viewMode, setViewMode] = useState("grid") // "grid", "list", "details"
   
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme)
@@ -1064,12 +1140,111 @@ export default function App() {
     }
   }
 
+  const deleteClient = async (id, name) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o projeto "${name}"? Esta ação não pode ser desfeita e removerá todos os dados vinculados.`)) return
+    try {
+      const r = await authFetch(`${API}/api/v1/clients/${id}`, {
+        method: "DELETE"
+      })
+      if (!r.ok) {
+        const errorData = await r.json().catch(() => ({}))
+        throw new Error(errorData.detail || "Falha ao excluir projeto")
+      }
+      pushToast("Projeto excluído com sucesso")
+      loadClients()
+    } catch(e) {
+      pushToast(e.message, "error")
+    }
+  }
+
+  const linkAdAccount = async (id, name, adAccountId) => {
+    try {
+      const r = await authFetch(`${API}/api/v1/clients/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, ad_account_id: adAccountId || null })
+      })
+      if (!r.ok) throw new Error("Falha ao vincular conta de anúncios")
+      pushToast("Conta de anúncios vinculada com sucesso")
+      setClients(prev => prev.map(c => c.id === id ? { ...c, ad_account_id: adAccountId || null } : c))
+    } catch(e) {
+      pushToast(e.message, "error")
+    }
+  }
+
   const loadClients = async () => {
     try {
       const r = await authFetch(`${API}/api/v1/clients/`)
       if (r.status === 401) return handleLogout()
       const data = await r.json()
-      setClients(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      setClients(list)
+
+      if (list.length > 0) {
+        try {
+          const firstClient = list.find(c => c.id !== 1) || list[0]
+          const adRes = await authFetch(`${API}/api/v1/ads/accounts?client_id=${firstClient.id}`)
+          if (adRes.ok) {
+            const adData = await adRes.json()
+            const adAccountsList = adData.data || []
+            setGlobalAdAccounts(adAccountsList)
+
+            // Auto match unlinked clients to their respective ad accounts
+            let matchedAny = false
+            const updatedClientsList = [...list]
+            
+            for (let i = 0; i < updatedClientsList.length; i++) {
+              const c = updatedClientsList[i]
+              if (c.id === 1) continue
+              if (!c.ad_account_id && adAccountsList.length > 0) {
+                const normalizedClientName = c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                
+                let bestMatch = null
+                for (const acc of adAccountsList) {
+                  const normalizedAccName = acc.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                  
+                  if (normalizedAccName.includes(normalizedClientName) || normalizedClientName.includes(normalizedAccName)) {
+                    bestMatch = acc
+                    break
+                  }
+                  
+                  const clientWords = normalizedClientName.split(/\s+/).filter(w => w.length > 3)
+                  const accWords = normalizedAccName.split(/\s+/).filter(w => w.length > 3)
+                  const intersection = clientWords.filter(w => accWords.includes(w))
+                  
+                  if (intersection.length > 0) {
+                    bestMatch = acc
+                    break
+                  }
+
+                  if (normalizedClientName.startsWith("ml ") && acc.name === "Machado Lima") {
+                    bestMatch = acc
+                    break
+                  }
+                }
+                
+                if (bestMatch) {
+                  matchedAny = true
+                  updatedClientsList[i] = { ...c, ad_account_id: bestMatch.id }
+                  
+                  // Save matching in the background
+                  authFetch(`${API}/api/v1/clients/${c.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: c.name, ad_account_id: bestMatch.id })
+                  }).catch(e => console.error("Auto match save failed:", e))
+                }
+              }
+            }
+
+            if (matchedAny) {
+              setClients(updatedClientsList)
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load global ad accounts:", err)
+        }
+      }
     } catch (e) {
       setClients([])
     }
@@ -1604,8 +1779,6 @@ export default function App() {
       </div>
     )
   }
-    )
-  }
   const renderHistory = () => (
     <div style={{padding:"24px 0"}}>
       <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(340px, 1fr))", gap:"20px"}}>
@@ -1691,67 +1864,234 @@ export default function App() {
 
   const renderHome = () => (
     <div style={{padding:"48px 40px",maxWidth:"1100px",margin:"0 auto",width:"100%"}}>
-      <div style={{marginBottom:"36px"}}>
-        <h1 style={{fontSize:"26px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.5px",marginBottom:"6px"}}>Meus Projetos</h1>
-        <p style={{fontSize:"14px",color:"var(--text-muted)"}}>Selecione um projeto para gerar relatórios e acessar as métricas.</p>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))",gap:"20px"}}>
-        {clients.map(c => (
-          <div key={c.id} className="project-card">
-            <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
-              {c.profile_picture_url ? (
-                <img 
-                  src={c.profile_picture_url} 
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'grid';
-                  }}
-                  style={{width:"46px",height:"46px",borderRadius:"12px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
-                />
-              ) : null}
-              {(!c.profile_picture_url || c.profile_picture_url) && (
-                <div style={{
-                  width:"46px",height:"46px",borderRadius:"12px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
-                  flexShrink:0,display: c.profile_picture_url ? "none" : "grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"
-                }}>
-                  <BarChart2 size={20} color="white"/>
-                </div>
-              )}
-              <div style={{flex:1,overflow:"hidden"}}>
-                <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-
-              </div>
-              <button
-                onClick={() => renameClient(c.id, c.name)}
-                title="Renomear Projeto"
-                className="btn-icon"
-                style={{flexShrink:0,fontFamily:"inherit",fontSize:"14px"}}
-              >
-                ✏️
-              </button>
-            </div>
-            <div style={{height:"1px",background:"var(--border)"}}/>
-            <button
-              className="btn-primary"
-              onClick={() => startReportConfig(c.id)}
-              style={{width:"100%",padding:"11px",fontSize:"14px"}}
-            >
-              Acessar Painel →
-            </button>
-          </div>
-        ))}
-        <div
-          onClick={() => setShowAddModal(true)}
-          style={{border:"1.5px dashed var(--border-med)",borderRadius:"var(--radius-lg)",padding:"32px 24px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:"10px",color:"var(--text-muted)",transition:"all 0.2s ease",minHeight:"160px"}}
-          onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent-light)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-med)'; e.currentTarget.style.color='var(--text-muted)'; }}
-        >
-          <div style={{width:"40px",height:"40px",borderRadius:"10px",background:"var(--bg-subtle-md)",display:"grid",placeItems:"center"}}>
-            <Plus size={20}/>
-          </div>
-          <span style={{fontSize:"14px",fontWeight:"600"}}>Adicionar Projeto</span>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:"36px"}}>
+        <div>
+          <h1 style={{fontSize:"26px",fontWeight:"800",color:"var(--text-primary)",letterSpacing:"-0.5px",marginBottom:"6px"}}>Meus Projetos</h1>
+          <p style={{fontSize:"14px",color:"var(--text-muted)"}}>Selecione um projeto para gerar relatórios e acessar as métricas.</p>
+        </div>
+        
+        {/* Toggle Controls */}
+        <div style={{display:"flex",background:"var(--bg-subtle-5)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"12px",padding:"4px",gap:"2px"}}>
+          <button 
+            onClick={() => setViewMode("grid")} 
+            title="Grade de Ícones"
+            style={{
+              background: viewMode === "grid" ? "rgba(124,58,237,0.15)" : "transparent",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 12px",
+              color: viewMode === "grid" ? "var(--accent-light)" : "var(--text-muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "12px",
+              fontWeight: "600",
+              transition: "all 0.2s"
+            }}
+          >
+            <LayoutGrid size={14} /> Grade
+          </button>
+          <button 
+            onClick={() => setViewMode("details")} 
+            title="Detalhes Completos"
+            style={{
+              background: viewMode === "details" ? "rgba(124,58,237,0.15)" : "transparent",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 12px",
+              color: viewMode === "details" ? "var(--accent-light)" : "var(--text-muted)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "12px",
+              fontWeight: "600",
+              transition: "all 0.2s"
+            }}
+          >
+            <Layers size={14} /> Detalhes
+          </button>
         </div>
       </div>
+
+      {/* Grid View Layout */}
+      {viewMode === "grid" && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))",gap:"20px"}}>
+          {clients.map(c => (
+            <div key={c.id} className="project-card">
+              <div style={{display:"flex",alignItems:"center",gap:"14px"}}>
+                {c.profile_picture_url ? (
+                  <img 
+                    src={c.profile_picture_url} 
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'grid';
+                    }}
+                    style={{width:"46px",height:"46px",borderRadius:"12px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
+                  />
+                ) : null}
+                {(!c.profile_picture_url || c.profile_picture_url) && (
+                  <div style={{
+                    width:"46px",height:"46px",borderRadius:"12px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                    flexShrink:0,display: c.profile_picture_url ? "none" : "grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"
+                  }}>
+                    <BarChart2 size={20} color="white"/>
+                  </div>
+                )}
+                <div style={{flex:1,overflow:"hidden"}}>
+                  <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                </div>
+                <button
+                  onClick={() => renameClient(c.id, c.name)}
+                  title="Renomear Projeto"
+                  className="btn-icon"
+                  style={{flexShrink:0,fontFamily:"inherit",fontSize:"14px"}}
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => deleteClient(c.id, c.name)}
+                  title="Excluir Projeto"
+                  className="btn-icon text-red"
+                  style={{flexShrink:0,fontFamily:"inherit",fontSize:"14px",color:"var(--red)"}}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div style={{height:"1px",background:"var(--border)"}}/>
+              <button
+                className="btn-primary"
+                onClick={() => startReportConfig(c.id)}
+                style={{width:"100%",padding:"11px",fontSize:"14px"}}
+              >
+                Acessar Painel →
+              </button>
+            </div>
+          ))}
+          <div
+            onClick={() => setShowAddModal(true)}
+            style={{border:"1.5px dashed var(--border-med)",borderRadius:"var(--radius-lg)",padding:"32px 24px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:"10px",color:"var(--text-muted)",transition:"all 0.2s ease",minHeight:"160px"}}
+            onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent-light)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-med)'; e.currentTarget.style.color='var(--text-muted)'; }}
+          >
+            <div style={{width:"40px",height:"40px",borderRadius:"10px",background:"var(--bg-subtle-md)",display:"grid",placeItems:"center"}}>
+              <Plus size={20}/>
+            </div>
+            <span style={{fontSize:"14px",fontWeight:"600"}}>Adicionar Projeto</span>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* Details View Layout */}
+      {viewMode === "details" && (
+        <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
+          {clients.map(c => (
+            <div key={c.id} className="project-card" style={{display:"grid",gridTemplateColumns:"240px 1fr 240px",alignItems:"center",padding:"24px",gap:"24px",margin:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:"16px",overflow:"hidden"}}>
+                {c.profile_picture_url ? (
+                  <img 
+                    src={c.profile_picture_url} 
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'grid';
+                    }}
+                    style={{width:"56px",height:"56px",borderRadius:"14px",flexShrink:0,objectFit:"cover",boxShadow:"0 4px 14px rgba(0,0,0,0.2)"}} 
+                  />
+                ) : null}
+                {(!c.profile_picture_url || c.profile_picture_url) && (
+                  <div style={{
+                    width:"56px",height:"56px",borderRadius:"14px",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                    flexShrink:0,display: c.profile_picture_url ? "none" : "grid",placeItems:"center",boxShadow:"0 4px 14px rgba(124,58,237,0.3)"
+                  }}>
+                    <BarChart2 size={24} color="white"/>
+                  </div>
+                )}
+                <div style={{overflow:"hidden"}}>
+                  <div style={{fontSize:"16px",fontWeight:"700",color:"var(--text-primary)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:"4px"}}>{c.name}</div>
+                  <div style={{display:"inline-flex",alignItems:"center",gap:"4px",fontSize:"11px",color:"#34d399",background:"rgba(16,185,129,0.1)",padding:"2px 8px",borderRadius:"100px",fontWeight:"600"}}>
+                    ✓ Conectado
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",fontSize:"12px"}}>
+                <div>
+                  <div style={{color:"var(--text-muted)",fontWeight:"600",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.05em",fontSize:"10px"}}>Identificadores Meta</div>
+                  <div style={{color:"var(--text-primary)",fontFamily:"monospace"}}>Página: {c.page_id}</div>
+                  <div style={{color:"var(--text-primary)",fontFamily:"monospace",marginTop:"2px"}}>Instagram: {c.ig_id}</div>
+                </div>
+                <div>
+                  <div style={{color:"var(--text-muted)",fontWeight:"600",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.05em",fontSize:"10px"}}>Conta de Anúncios</div>
+                  {globalAdAccounts.length > 0 ? (
+                    <select
+                      value={c.ad_account_id || ""}
+                      onChange={(e) => linkAdAccount(c.id, c.name, e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "12px",
+                        background: "var(--bg-input)",
+                        border: "1px solid var(--border-med)",
+                        borderRadius: "8px",
+                        color: "var(--text-primary)",
+                        width: "100%",
+                        outline: "none",
+                        fontFamily: "inherit",
+                        cursor: "pointer",
+                        boxSizing: "border-box"
+                      }}
+                    >
+                      <option value="">⚠️ Não vinculada</option>
+                      {globalAdAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} ({acc.id})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div style={{color:"var(--text-primary)",fontFamily:"monospace"}}>{c.ad_account_id || "Não vinculada"}</div>
+                  )}
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:"12px"}}>
+                <button
+                  onClick={() => renameClient(c.id, c.name)}
+                  title="Renomear Projeto"
+                  className="btn-icon"
+                  style={{fontFamily:"inherit",fontSize:"14px",width:"38px",height:"38px"}}
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => deleteClient(c.id, c.name)}
+                  title="Excluir Projeto"
+                  className="btn-icon text-red"
+                  style={{fontFamily:"inherit",fontSize:"14px",width:"38px",height:"38px",color:"var(--red)",display:"flex",alignItems:"center",justifyContent:"center"}}
+                >
+                  <Trash2 size={16} />
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => startReportConfig(c.id)}
+                  style={{padding:"10px 20px",fontSize:"13px",width:"auto"}}
+                >
+                  Acessar Painel →
+                </button>
+              </div>
+            </div>
+          ))}
+          <div
+            onClick={() => setShowAddModal(true)}
+            style={{border:"1.5px dashed var(--border-med)",borderRadius:"var(--radius-lg)",padding:"24px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:"10px",color:"var(--text-muted)",transition:"all 0.2s ease"}}
+            onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent-light)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border-med)'; e.currentTarget.style.color='var(--text-muted)'; }}
+          >
+            <Plus size={20}/>
+            <span style={{fontSize:"13px",fontWeight:"600"}}>Adicionar Novo Projeto</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 
