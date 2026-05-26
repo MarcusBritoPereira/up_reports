@@ -2464,10 +2464,28 @@ export default function App() {
                 </thead>
                 <tbody>
                   {reels.map(post => {
-                    const reach = post.insights?.reach || 0;
-                    const views = post.insights?.impressions || post.insights?.plays || reach;
-                    const inters = (post.like_count||0) + (post.comments_count||0) + (post.insights?.saved||0) + (post.insights?.shares||0);
-                    const rate = reach > 0 ? ((inters / reach) * 100).toFixed(2) + '%' : '0%';
+                    const hasReach = post.insights?.reach !== null && post.insights?.reach !== undefined;
+                    const reach = hasReach ? post.insights.reach : 0;
+                    
+                    const hasImpressions = post.insights?.impressions !== null && post.insights?.impressions !== undefined;
+                    const impressions = hasImpressions ? post.insights.impressions : 0;
+                    
+                    const plays = post.insights?.plays;
+                    const hasPlays = plays !== null && plays !== undefined;
+                    
+                    const viewsVal = hasImpressions ? impressions : (hasPlays ? plays : (hasReach ? reach : null));
+                    const viewsStr = viewsVal !== null ? viewsVal.toLocaleString("pt-BR") : "N/A";
+                    const reachStr = hasReach ? reach.toLocaleString("pt-BR") : "N/A";
+                    
+                    const hasSaved = post.insights?.saved !== null && post.insights?.saved !== undefined;
+                    const savedStr = hasSaved ? post.insights.saved.toLocaleString("pt-BR") : "N/A";
+                    
+                    const hasShares = post.insights?.shares !== null && post.insights?.shares !== undefined;
+                    const sharesStr = hasShares ? post.insights.shares.toLocaleString("pt-BR") : "N/A";
+                    
+                    const inters = (post.like_count||0) + (post.comments_count||0) + (hasSaved ? post.insights.saved : 0) + (hasShares ? post.insights.shares : 0);
+                    const rate = hasReach && reach > 0 ? ((inters / reach) * 100).toFixed(2) + '%' : 'N/A';
+                    
                     return (
                     <tr key={post.id} style={{borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
                       <td style={{padding:"14px 20px", display:"flex", alignItems:"center", gap:"12px"}}>
@@ -2478,14 +2496,14 @@ export default function App() {
                           {post.caption || 'Sem legenda'}
                         </a>
                       </td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{views.toLocaleString("pt-BR")}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{reach.toLocaleString("pt-BR")}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{viewsStr}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{reachStr}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{inters.toLocaleString("pt-BR")}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{rate}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{post.like_count || 0}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{post.comments_count || 0}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{post.insights?.saved || 0}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{post.insights?.shares || 0}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{savedStr}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{sharesStr}</td>
                     </tr>
                   )})}
                 </tbody>
@@ -2515,10 +2533,28 @@ export default function App() {
                 </thead>
                 <tbody>
                   {media.sort((a,b) => (b.insights?.reach || 0) - (a.insights?.reach || 0)).map(post => {
-                    const reach = post.insights?.reach || 0;
-                    const views = post.insights?.impressions || post.insights?.plays || reach;
-                    const inters = (post.like_count||0) + (post.comments_count||0) + (post.insights?.saved||0) + (post.insights?.shares||0);
-                    const rate = reach > 0 ? ((inters / reach) * 100).toFixed(2) + '%' : '0%';
+                    const hasReach = post.insights?.reach !== null && post.insights?.reach !== undefined;
+                    const reach = hasReach ? post.insights.reach : 0;
+                    
+                    const hasImpressions = post.insights?.impressions !== null && post.insights?.impressions !== undefined;
+                    const impressions = hasImpressions ? post.insights.impressions : 0;
+                    
+                    const plays = post.insights?.plays;
+                    const hasPlays = plays !== null && plays !== undefined;
+                    
+                    const viewsVal = hasImpressions ? impressions : (hasPlays ? plays : (hasReach ? reach : null));
+                    const viewsStr = viewsVal !== null ? viewsVal.toLocaleString("pt-BR") : "N/A";
+                    const reachStr = hasReach ? reach.toLocaleString("pt-BR") : "N/A";
+                    
+                    const hasSaved = post.insights?.saved !== null && post.insights?.saved !== undefined;
+                    const savedStr = hasSaved ? post.insights.saved.toLocaleString("pt-BR") : "N/A";
+                    
+                    const hasShares = post.insights?.shares !== null && post.insights?.shares !== undefined;
+                    const sharesStr = hasShares ? post.insights.shares.toLocaleString("pt-BR") : "N/A";
+                    
+                    const inters = (post.like_count||0) + (post.comments_count||0) + (hasSaved ? post.insights.saved : 0) + (hasShares ? post.insights.shares : 0);
+                    const rate = hasReach && reach > 0 ? ((inters / reach) * 100).toFixed(2) + '%' : 'N/A';
+                    
                     return (
                     <tr key={post.id} style={{borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
                       <td style={{padding:"14px 20px", display:"flex", alignItems:"center", gap:"12px"}}>
@@ -2530,14 +2566,14 @@ export default function App() {
                         </a>
                       </td>
                       <td style={{padding:"14px", color:"var(--text-500)"}}>{post.media_type === 'VIDEO' ? 'Reels' : 'Post'}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{views.toLocaleString("pt-BR")}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{reach.toLocaleString("pt-BR")}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{viewsStr}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{reachStr}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{inters.toLocaleString("pt-BR")}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{rate}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{post.like_count || 0}</td>
                       <td style={{padding:"14px", color:"var(--text-300)"}}>{post.comments_count || 0}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{post.insights?.saved || 0}</td>
-                      <td style={{padding:"14px", color:"var(--text-300)"}}>{post.insights?.shares || 0}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{savedStr}</td>
+                      <td style={{padding:"14px", color:"var(--text-300)"}}>{sharesStr}</td>
                     </tr>
                   )})}
                 </tbody>

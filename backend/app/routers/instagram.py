@@ -172,32 +172,28 @@ async def get_media(
     from datetime import date, timedelta
     from app.models import MediaArchive
     
-    # 1. Try to get the latest snapshot from DB to avoid hitting Meta API for every post
+    # 1. Find the latest snapshot date available for this client in MediaArchive
+    latest_snapshot = db.query(MediaArchive).filter(
+        MediaArchive.client_id == client_id
+    ).order_by(MediaArchive.snapshot_date.desc()).first()
+    
+    if not latest_snapshot:
+        return {"data": []}
+        
+    latest_date = latest_snapshot.snapshot_date
+    
+    # 2. Get all snapshots for this client on the latest snapshot date
     today_snapshots = db.query(MediaArchive).filter(
         MediaArchive.client_id == client_id,
-        MediaArchive.snapshot_date == date.today()
+        MediaArchive.snapshot_date == latest_date
     ).all()
-    
-    # If we have no snapshots today, we fetch them once (this happens only if snapshots/collect failed or hasn't run)
-    if not today_snapshots:
-        return {"data": []}
-
-    # 2. Fetch past archive for delta calculation
-    past_date = date.today() - timedelta(days=days)
-    past_archives = db.query(MediaArchive).filter(
-        MediaArchive.client_id == client_id,
-        MediaArchive.snapshot_date >= past_date
-    ).order_by(MediaArchive.snapshot_date.asc()).all()
-    
-    # Map media by ID
-    today_map = {a.media_id: a for a in today_snapshots}
-    past_map = {}
-    for a in past_archives:
-        if a.media_id not in past_map:
-            past_map[a.media_id] = a
 
     items_with_insights = []
-    for m_id, today in today_map.items():
+    for today in today_snapshots:
+        # Heuristic to detect if a post was created before conversion to Business Account:
+        # If it has likes or comments, but 0 reach and 0 impressions, it is pre-conversion.
+        is_pre_conversion = (today.reach == 0 and today.impressions == 0 and (today.like_count > 0 or today.comments_count > 0))
+        
         item = {
             "id": today.media_id,
             "caption": today.caption,
@@ -205,38 +201,24 @@ async def get_media(
             "permalink": today.permalink,
             "thumbnail_url": today.thumbnail_url,
             "timestamp": today.timestamp.isoformat() if today.timestamp else None,
+            "like_count": today.like_count,
+            "comments_count": today.comments_count,
+            "insights": {
+                "reach": None if is_pre_conversion else today.reach,
+                "impressions": None if is_pre_conversion else today.impressions,
+                "saved": None if is_pre_conversion else today.saved,
+                "shares": None if is_pre_conversion else today.shares,
+            },
+            "is_delta": False
         }
-        
-        if m_id in past_map:
-            past = past_map[m_id]
-            item["like_count"] = max(0, today.like_count - past.like_count)
-            item["comments_count"] = max(0, today.comments_count - past.comments_count)
-            item["insights"] = {
-                "reach": max(0, today.reach - past.reach),
-                "impressions": max(0, today.impressions - past.impressions),
-                "saved": max(0, today.saved - past.saved),
-                "shares": max(0, today.shares - past.shares),
-            }
-            item["is_delta"] = True
-        else:
-            item["like_count"] = today.like_count
-            item["comments_count"] = today.comments_count
-            item["insights"] = {
-                "reach": today.reach,
-                "impressions": today.impressions,
-                "saved": today.saved,
-                "shares": today.shares,
-            }
-            item["is_delta"] = False
-        
         items_with_insights.append(item)
         
-    # Sort by total interactions in the period (like + comment + saved + share)
+    # Sort by total interactions (like + comment + saved + share)
     items_with_insights.sort(key=lambda x: (
         x.get("like_count", 0) + 
         x.get("comments_count", 0) + 
-        x.get("insights", {}).get("saved", 0) + 
-        x.get("insights", {}).get("shares", 0)
+        (x.get("insights", {}).get("saved") or 0) + 
+        (x.get("insights", {}).get("shares") or 0)
     ), reverse=True)
     
     return {"data": items_with_insights}
