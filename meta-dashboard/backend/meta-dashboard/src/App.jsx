@@ -559,21 +559,29 @@ const OrganicReport = ({ client, profile, summary, media, stories, audience, sna
             <div className="panel-head">
               <h3 className="panel-title">Distribuição por Gênero</h3>
             </div>
-            <div style={{height: "260px"}}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={genderData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} dataKey="value" label={({percent}) => `${(percent*100).toFixed(0)}%`}>
-                    <Cell fill="#6366f1" />
-                    <Cell fill="#ec4899" />
-                  </Pie>
-                  <RechartsTooltip />
-                  <Legend verticalAlign="bottom" height={36} formatter={(value, entry) => {
-                    const total = genderData.reduce((acc, d) => acc + d.value, 0);
-                    const percent = total > 0 ? (entry.payload.value / total * 100).toFixed(1) : 0;
-                    return `${value} (${percent}%)`;
-                  }} />
-                </PieChart>
-              </ResponsiveContainer>
+            <div style={{height: "260px", position: "relative", display: "flex", alignItems: "center", justifyContent: "center"}}>
+              {genderData.reduce((acc, d) => acc + d.value, 0) === 0 ? (
+                <div style={{padding:"20px", textAlign:"center", fontSize:"12.5px", color:"var(--text-muted)", lineHeight:1.5}}>
+                  <p style={{fontSize:"18px", marginBottom:"6px"}}>🔒</p>
+                  <p>Dados demográficos insuficientes.</p>
+                  <p style={{fontSize:"11px", marginTop:"4px"}}>Esta conta comercial do Instagram precisa ter pelo menos <b>100 seguidores</b> para liberar dados de gênero (API do Meta).</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={genderData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} dataKey="value" label={({percent}) => `${(percent*100).toFixed(0)}%`}>
+                      <Cell fill="#ec4899" />
+                      <Cell fill="#3b82f6" />
+                    </Pie>
+                    <RechartsTooltip />
+                    <Legend verticalAlign="bottom" height={36} formatter={(value, entry) => {
+                      const total = genderData.reduce((acc, d) => acc + d.value, 0);
+                      const percent = total > 0 ? (entry.payload.value / total * 100).toFixed(1) : 0;
+                      return `${value} (${percent}%)`;
+                    }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -581,22 +589,32 @@ const OrganicReport = ({ client, profile, summary, media, stories, audience, sna
             <div className="panel-head">
               <h3 className="panel-title">Principais Cidades</h3>
             </div>
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>Cidade</th>
-                  <th style={{textAlign: "right"}}>Seguidores</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topCities.map((c, i) => (
-                  <tr key={i}>
-                    <td>{c.city}</td>
-                    <td style={{textAlign: "right", fontWeight: "700"}}>{c.count.toLocaleString("pt-BR")}</td>
+            {topCities.length === 0 ? (
+              <div style={{height: "220px", display:"grid", placeItems:"center", padding:"20px", textAlign:"center", fontSize:"12.5px", color:"var(--text-muted)", lineHeight:1.5}}>
+                <div>
+                  <p style={{fontSize:"18px", marginBottom:"6px"}}>📍</p>
+                  <p>Cidades principais indisponíveis.</p>
+                  <p style={{fontSize:"11px", marginTop:"4px"}}>Esta conta comercial do Instagram precisa ter pelo menos <b>100 seguidores</b> para liberar dados de localização (API do Meta).</p>
+                </div>
+              </div>
+            ) : (
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>Cidade</th>
+                    <th style={{textAlign: "right"}}>Seguidores</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {topCities.map((c, i) => (
+                    <tr key={i}>
+                      <td>{c.city}</td>
+                      <td style={{textAlign: "right", fontWeight: "700"}}>{c.count.toLocaleString("pt-BR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </main>
@@ -2363,16 +2381,24 @@ export default function App() {
             
             <div style={{background:"var(--bg-subtle-3)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:"16px",padding:"24px", display: "flex", flexDirection: "column"}}>
               <p style={{color:"var(--text-100)",fontSize:"14px",marginBottom:"12px",fontWeight:"600", textAlign: "center"}}>Seguidores por gênero</p>
-              <div style={{flex: 1}}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={genderData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
-                      {genderData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.name === 'Feminino' ? '#3b82f6' : entry.name === 'Masculino' ? '#22c55e' : '#64748b'} />)}
-                    </Pie>
-                    <RechartsTooltip contentStyle={{background:"var(--bg-card)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"8px"}}/>
-                    <Legend wrapperStyle={{fontSize: "12px", color: "var(--text-500)"}}/>
-                  </PieChart>
-                </ResponsiveContainer>
+              <div style={{flex: 1, minHeight: "180px", position: "relative", display: "flex", alignItems: "center", justifyContent: "center"}}>
+                {genderData.reduce((acc, d) => acc + d.value, 0) === 0 ? (
+                  <div style={{padding:"10px", textAlign:"center", fontSize:"12px", color:"var(--text-muted)", lineHeight:1.5}}>
+                    <p style={{fontSize:"16px", marginBottom:"4px"}}>🔒</p>
+                    <p>Dados demográficos insuficientes.</p>
+                    <p style={{fontSize:"10px", marginTop:"4px"}}>Esta conta comercial do Instagram precisa ter pelo menos <b>100 seguidores</b> para liberar dados de gênero (API do Meta).</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={genderData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                        {genderData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.name === 'Feminino' ? '#ec4899' : entry.name === 'Masculino' ? '#3b82f6' : '#64748b'} />)}
+                      </Pie>
+                      <RechartsTooltip contentStyle={{background:"var(--bg-card)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"8px"}}/>
+                      <Legend wrapperStyle={{fontSize: "12px", color: "var(--text-500)"}}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </div>
@@ -2381,22 +2407,30 @@ export default function App() {
             <div style={{padding:"20px", borderBottom:"1px solid rgba(255,255,255,0.07)", textAlign: "center"}}>
                <p style={{color:"var(--text-100)",fontSize:"14px",fontWeight:"600"}}>Cidades com o maior número de seguidores</p>
             </div>
-            <table style={{width:"100%", borderCollapse:"collapse", textAlign:"left", fontSize:"13px"}}>
-              <thead>
-                <tr style={{background:"var(--bg-subtle-2)"}}>
-                  <th style={{padding:"14px 24px", color:"var(--text-500)", fontWeight:"600", borderBottom:"1px solid rgba(255,255,255,0.07)"}}>Cidade</th>
-                  <th style={{padding:"14px 24px", color:"#3b82f6", fontWeight:"600", borderBottom:"1px solid rgba(255,255,255,0.07)", textAlign: "right"}}>Seguidores ↓</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topCities.map((c, i) => (
-                  <tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
-                    <td style={{padding:"14px 24px", color:"var(--text-300)"}}>{c.city}</td>
-                    <td style={{padding:"14px 24px", color:"var(--text-300)", textAlign: "right"}}>{c.count.toLocaleString("pt-BR")}</td>
+            {topCities.length === 0 ? (
+              <div style={{padding:"40px 20px", textAlign:"center", fontSize:"12.5px", color:"var(--text-muted)", lineHeight:1.5}}>
+                <p style={{fontSize:"18px", marginBottom:"6px"}}>📍</p>
+                <p>Cidades principais indisponíveis.</p>
+                <p style={{fontSize:"11px", marginTop:"4px"}}>Esta conta comercial do Instagram precisa ter pelo menos <b>100 seguidores</b> para liberar dados de localização (API do Meta).</p>
+              </div>
+            ) : (
+              <table style={{width:"100%", borderCollapse:"collapse", textAlign:"left", fontSize:"13px"}}>
+                <thead>
+                  <tr style={{background:"var(--bg-subtle-2)"}}>
+                    <th style={{padding:"14px 24px", color:"var(--text-500)", fontWeight:"600", borderBottom:"1px solid rgba(255,255,255,0.07)"}}>Cidade</th>
+                    <th style={{padding:"14px 24px", color:"#3b82f6", fontWeight:"600", borderBottom:"1px solid rgba(255,255,255,0.07)", textAlign: "right"}}>Seguidores ↓</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {topCities.map((c, i) => (
+                    <tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
+                      <td style={{padding:"14px 24px", color:"var(--text-300)"}}>{c.city}</td>
+                      <td style={{padding:"14px 24px", color:"var(--text-300)", textAlign: "right"}}>{c.count.toLocaleString("pt-BR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>}
 
