@@ -82,13 +82,82 @@ async def get_audience(
 ):
     ig_id, token = get_client_creds(client_id, current, db)
     url = f"{META_BASE_URL}/{ig_id}/insights"
-    params = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
+    
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(url, params=params)
-        if r.status_code != 200:
-            # Silently fallback to empty to avoid crashing the dashboard
+        # Fetch age/gender and city breakdowns in parallel
+        params_demographics = {
+            "metric": "follower_demographics",
+            "period": "lifetime",
+            "metric_type": "total_value",
+            "breakdown": "age,gender",
+            "access_token": token
+        }
+        params_city = {
+            "metric": "follower_demographics",
+            "period": "lifetime",
+            "metric_type": "total_value",
+            "breakdown": "city",
+            "access_token": token
+        }
+        
+        res_demo, res_city = await asyncio.gather(
+            client.get(url, params=params_demographics),
+            client.get(url, params=params_city)
+        )
+        
+        # If both fail with non-200, check if we can fall back to the old metrics
+        if res_demo.status_code != 200:
+            params_old = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
+            old_res = await client.get(url, params=params_old)
+            if old_res.status_code == 200:
+                return old_res.json()
             return {"data": []}
-        return r.json()
+
+        # Convert the new v21.0 follower_demographics to legacy audience schema
+        response_data = []
+        
+        # 1. Map Age/Gender
+        try:
+            demo_json = res_demo.json()
+            demo_breakdowns = demo_json.get("data", [{}])[0].get("total_value", {}).get("breakdowns", [])
+            if demo_breakdowns:
+                age_gender_val = {}
+                results = demo_breakdowns[0].get("results", [])
+                for item in results:
+                    dims = item.get("dimension_values", [])
+                    if len(dims) >= 2:
+                        age = dims[0]
+                        gender = dims[1]
+                        val = item.get("value", 0)
+                        age_gender_val[f"{gender}.{age}"] = val
+                response_data.append({
+                    "name": "audience_gender_age",
+                    "values": [{"value": age_gender_val}]
+                })
+        except Exception as e:
+            print("Failed parsing demographics:", e)
+
+        # 2. Map Cities
+        try:
+            city_json = res_city.json()
+            city_breakdowns = city_json.get("data", [{}])[0].get("total_value", {}).get("breakdowns", [])
+            if city_breakdowns:
+                city_val = {}
+                results = city_breakdowns[0].get("results", [])
+                for item in results:
+                    dims = item.get("dimension_values", [])
+                    if len(dims) >= 1:
+                        city_name = dims[0]
+                        val = item.get("value", 0)
+                        city_val[city_name] = val
+                response_data.append({
+                    "name": "audience_city",
+                    "values": [{"value": city_val}]
+                })
+        except Exception as e:
+            print("Failed parsing cities:", e)
+
+        return {"data": response_data}
 
 
 @router.get("/media")
@@ -215,23 +284,86 @@ async def get_stories_history(
 async def collect_audience_archive(client_id: int, current: User, db: Session):
     ig_id, token = get_client_creds(client_id, current, db)
     url = f"{META_BASE_URL}/{ig_id}/insights"
-    params = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
+    
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(url, params=params)
-        if r.status_code == 200:
+        params_demographics = {
+            "metric": "follower_demographics",
+            "period": "lifetime",
+            "metric_type": "total_value",
+            "breakdown": "age,gender",
+            "access_token": token
+        }
+        params_city = {
+            "metric": "follower_demographics",
+            "period": "lifetime",
+            "metric_type": "total_value",
+            "breakdown": "city",
+            "access_token": token
+        }
+        
+        res_demo, res_city = await asyncio.gather(
+            client.get(url, params=params_demographics),
+            client.get(url, params=params_city)
+        )
+        
+        age_gender = None
+        city = None
+        
+        if res_demo.status_code == 200:
+            try:
+                demo_json = res_demo.json()
+                demo_breakdowns = demo_json.get("data", [{}])[0].get("total_value", {}).get("breakdowns", [])
+                if demo_breakdowns:
+                    age_gender = {}
+                    results = demo_breakdowns[0].get("results", [])
+                    for item in results:
+                        dims = item.get("dimension_values", [])
+                        if len(dims) >= 2:
+                            age = dims[0]
+                            gender = dims[1]
+                            val = item.get("value", 0)
+                            age_gender[f"{gender}.{age}"] = val
+            except Exception as e:
+                print("Failed parsing collect demographics:", e)
+
+        if res_city.status_code == 200:
+            try:
+                city_json = res_city.json()
+                city_breakdowns = city_json.get("data", [{}])[0].get("total_value", {}).get("breakdowns", [])
+                if city_breakdowns:
+                    city = {}
+                    results = city_breakdowns[0].get("results", [])
+                    for item in results:
+                        dims = item.get("dimension_values", [])
+                        if len(dims) >= 1:
+                            city_name = dims[0]
+                            val = item.get("value", 0)
+                            city[city_name] = val
+            except Exception as e:
+                print("Failed parsing collect cities:", e)
+
+        # Fallback to old format if new demographics are empty
+        if not age_gender and not city:
+            params_old = {"metric": "audience_gender_age,audience_city", "period": "lifetime", "access_token": token}
+            old_res = await client.get(url, params=params_old)
+            if old_res.status_code == 200:
+                data = old_res.json().get("data", [])
+                age_gender = next((m["values"][0]["value"] for m in data if m["name"] == "audience_gender_age" and m.get("values")), None)
+                city = next((m["values"][0]["value"] for m in data if m["name"] == "audience_city" and m.get("values")), None)
+
+        if age_gender or city:
             import json
             from datetime import date
             from app.models import AudienceArchive
-            data = r.json().get("data", [])
-            age_gender = next((m["values"][0]["value"] for m in data if m["name"] == "audience_gender_age" and m.get("values")), None)
-            city = next((m["values"][0]["value"] for m in data if m["name"] == "audience_city" and m.get("values")), None)
             
             exists = db.query(AudienceArchive).filter(
                 AudienceArchive.client_id == client_id, AudienceArchive.snapshot_date == date.today()
             ).first()
             if exists:
-                exists.gender_age_json = json.dumps(age_gender) if age_gender else None
-                exists.city_json = json.dumps(city) if city else None
+                if age_gender:
+                    exists.gender_age_json = json.dumps(age_gender)
+                if city:
+                    exists.city_json = json.dumps(city)
             else:
                 db.add(AudienceArchive(
                     client_id=client_id, snapshot_date=date.today(),
