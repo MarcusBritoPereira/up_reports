@@ -422,3 +422,93 @@ async def collect_media_archive(client_id: int, current: User, db: Session):
         await asyncio.gather(*[fetch_insights_and_save(i) for i in items])
         db.commit()
 
+
+async def collect_stories_archive(client_id: int, current: User, db: Session):
+    import asyncio
+    ig_id, token = get_client_creds(client_id, current, db)
+    url = f"{META_BASE_URL}/{ig_id}/stories"
+    params = {
+        "fields": "id,media_url,timestamp",
+        "access_token": token,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.get(url, params=params)
+        if r.status_code != 200:
+            print("Failed to fetch live stories:", r.text)
+            return
+            
+        stories_list = r.json().get("data", [])
+        
+        async def fetch_story_insights_and_save(story):
+            story_id = story["id"]
+            media_url = story.get("media_url")
+            
+            # Story insights metrics valid in v21.0/v22.0:
+            # Note: impressions and granular navigation metrics like taps_forward/taps_back are deprecated
+            # and replaced by reach and the single navigation metric.
+            metrics = ["reach", "replies", "shares", "navigation"]
+            
+            insights_dict = {}
+            resp = await client.get(
+                f"{META_BASE_URL}/{story_id}/insights",
+                params={"metric": ",".join(metrics), "access_token": token}
+            )
+            
+            if resp.status_code == 200:
+                insights_data = resp.json().get("data", [])
+                insights_dict = {i["name"]: i["values"][0]["value"] for i in insights_data if i.get("values")}
+            else:
+                # If metric call fails, fallback to most basic ones
+                resp_fallback = await client.get(
+                    f"{META_BASE_URL}/{story_id}/insights",
+                    params={"metric": "reach,replies", "access_token": token}
+                )
+                if resp_fallback.status_code == 200:
+                    insights_data = resp_fallback.json().get("data", [])
+                    insights_dict = {i["name"]: i["values"][0]["value"] for i in insights_data if i.get("values")}
+            
+            from dateutil import parser
+            from app.models import StoryArchive
+            
+            ts = parser.parse(story.get("timestamp")) if story.get("timestamp") else None
+            
+            # Check if story already exists in db
+            exists = db.query(StoryArchive).filter(
+                StoryArchive.client_id == client_id,
+                StoryArchive.story_id == story_id
+            ).first()
+            
+            reach_val = insights_dict.get("reach", 0)
+            replies_val = insights_dict.get("replies", 0)
+            shares_val = insights_dict.get("shares", 0)
+            nav_val = insights_dict.get("navigation", 0)
+            
+            if exists:
+                exists.media_url = media_url
+                exists.reach = reach_val
+                # Impressions is deprecated in Meta Graph API v22.0+, so we map reach as our best estimate
+                exists.impressions = reach_val
+                exists.replies = replies_val
+                exists.shares = shares_val
+                # We save the combined navigation metric in taps_forward
+                exists.taps_forward = nav_val
+            else:
+                db.add(StoryArchive(
+                    client_id=client_id,
+                    story_id=story_id,
+                    media_url=media_url,
+                    timestamp=ts,
+                    reach=reach_val,
+                    impressions=reach_val,
+                    replies=replies_val,
+                    shares=shares_val,
+                    taps_forward=nav_val,
+                    taps_back=0,
+                    exits=0
+                ))
+        
+        if stories_list:
+            await asyncio.gather(*[fetch_story_insights_and_save(s) for s in stories_list])
+            db.commit()
+
+

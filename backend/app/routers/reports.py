@@ -148,13 +148,13 @@ async def collect_snapshot(
     return {"ok": True, "history_fetched": not has_history}
 
 async def run_heavy_collection(client_id: int, current: User, db: Session):
-    from app.routers.instagram import collect_audience_archive, collect_media_archive
+    from app.routers.instagram import collect_audience_archive, collect_media_archive, collect_stories_archive
     try:
         # We need a new session or be careful with the current one. 
         # But for background tasks in FastAPI with Depends(get_db), it's better to manage it.
-        # Stories collection not yet implemented or moved
         await collect_audience_archive(client_id, current, db)
         await collect_media_archive(client_id, current, db)
+        await collect_stories_archive(client_id, current, db)
     except Exception as e:
         import logging
         logging.error(f"Failed to collect archives in background: {e}")
