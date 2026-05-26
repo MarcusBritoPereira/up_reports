@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -171,4 +171,100 @@ class ReportHistory(Base):
     objective = Column(String, nullable=True)
     ad_account_id = Column(String, nullable=True)
     campaign_ids = Column(Text, nullable=True) # Stored as JSON string
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    client_name = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="planned")
+    start_date = Column(Date, nullable=True)
+    estimated_end_date = Column(Date, nullable=True)
+    budget_cost = Column(Numeric(14, 2), nullable=True)
+    sale_value = Column(Numeric(14, 2), nullable=True)
+    bdi_expected = Column(Numeric(14, 2), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CostCenter(Base):
+    __tablename__ = "cost_centers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    code = Column(String, nullable=True)
+    kind = Column(String, nullable=False)
+    parent_id = Column(Integer, ForeignKey("cost_centers.id", ondelete="SET NULL"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    unit_of_measure = Column(String, nullable=True)
+    physical_target = Column(Numeric(14, 2), nullable=True)
+    category = Column(String, nullable=True)
+    accounting_account = Column(String, nullable=True)
+    tags = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinancialEntry(Base):
+    __tablename__ = "financial_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    financial_classification = Column(String, nullable=False)
+    entry_type = Column(String, nullable=False)
+    cost_type = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    cost_center_id = Column(Integer, ForeignKey("cost_centers.id", ondelete="SET NULL"), nullable=True)
+    description = Column(Text, nullable=True)
+    total_amount = Column(Numeric(14, 2), nullable=False)
+    entry_date = Column(Date, nullable=False)
+    is_installment = Column(Boolean, nullable=False, default=False)
+    installments = Column(Integer, nullable=True)
+    recurrence = Column(String, nullable=False, default="none")
+    status = Column(String, nullable=False, default="pending")
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinancialEntryItem(Base):
+    __tablename__ = "financial_entry_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_id = Column(Integer, ForeignKey("financial_entries.id", ondelete="CASCADE"), nullable=False)
+    description = Column(String, nullable=False)
+    quantity = Column(Numeric(14, 3), nullable=False, default=1)
+    unit = Column(String, nullable=True)
+    unit_price = Column(Numeric(14, 2), nullable=False)
+    total_price = Column(Numeric(14, 2), nullable=False)
+    cost_type = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+
+
+class FinancialEntryAllocation(Base):
+    __tablename__ = "financial_entry_allocations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_id = Column(Integer, ForeignKey("financial_entries.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    quantity = Column(Numeric(14, 3), nullable=True)
+    percentage = Column(Numeric(7, 4), nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    cost_type = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+
+
+class FinancialEntryAttachment(Base):
+    __tablename__ = "financial_entry_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_id = Column(Integer, ForeignKey("financial_entries.id", ondelete="CASCADE"), nullable=False)
+    file_name = Column(String, nullable=False)
+    file_url = Column(String, nullable=False)
+    mime_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
